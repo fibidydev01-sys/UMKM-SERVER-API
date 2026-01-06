@@ -1,0 +1,250 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum TenantStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  PARTIAL
+  FAILED
+}
+
+// ==========================================
+// TENANT (UMKM)
+// ==========================================
+
+model Tenant {
+  id            String       @id @default(cuid())
+  slug          String       @unique
+  name          String
+  category      String
+  description   String?
+  whatsapp      String
+  email         String       @unique
+  phone         String?
+  address       String?
+  logo          String?
+  banner        String?
+  theme         Json?
+  landingConfig Json?
+  
+  // ==========================================
+  // SEO FIELDS (NEW)
+  // ==========================================
+  metaTitle       String?   @db.VarChar(60)
+  metaDescription String?   @db.VarChar(160)
+  socialLinks     Json?     // { instagram, facebook, tiktok, youtube, twitter }
+  
+  password      String
+  status        TenantStatus @default(ACTIVE)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  products      Product[]
+  customers     Customer[]
+  orders        Order[]
+
+  @@index([slug])
+  @@index([category])
+  @@index([status])
+}
+
+// ==========================================
+// PRODUCT / SERVICE
+// ==========================================
+
+model Product {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  // Basic Info
+  name         String
+  description  String?
+  category     String?
+  sku          String?
+  
+  // Pricing
+  price        Float
+  comparePrice Float?
+  costPrice    Float?
+  
+  // Stock
+  stock        Int?
+  minStock     Int?
+  trackStock   Boolean  @default(false)
+  unit         String?
+  
+  // Media
+  images       String[]
+  
+  // Category-specific data
+  metadata     Json?
+  
+  // Status
+  isActive     Boolean  @default(true)
+  isFeatured   Boolean  @default(false)
+  
+  // ==========================================
+  // SEO SLUG (Already exists - just adding constraints)
+  // ==========================================
+  slug         String?
+  
+  // Timestamps
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  // Relations
+  orderItems   OrderItem[]
+  
+  @@unique([tenantId, sku])
+  @@unique([tenantId, slug])  // NEW: Ensure unique slug per tenant
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@index([tenantId, category])
+  @@index([tenantId, isFeatured])
+  @@index([tenantId, slug])   // NEW: Index for slug lookups
+}
+
+// ==========================================
+// CUSTOMER
+// ==========================================
+
+model Customer {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  // Basic Info
+  name        String
+  phone       String
+  email       String?
+  address     String?
+  
+  // Category-specific data
+  metadata    Json?
+  
+  // Stats
+  totalOrders Int      @default(0)
+  totalSpent  Float    @default(0)
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  orders      Order[]
+  
+  @@unique([tenantId, phone])
+  @@index([tenantId])
+  @@index([tenantId, phone])
+  @@index([tenantId, name])
+}
+
+// ==========================================
+// ORDER / TRANSACTION
+// ==========================================
+
+model Order {
+  id            String        @id @default(cuid())
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  customerId    String?
+  customer      Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  
+  // Order Info
+  orderNumber   String
+  
+  // Items
+  items         OrderItem[]
+  
+  // Pricing
+  subtotal      Float
+  discount      Float         @default(0)
+  tax           Float         @default(0)
+  total         Float
+  
+  // Payment
+  paymentMethod String?
+  paymentStatus PaymentStatus @default(PENDING)
+  paidAmount    Float         @default(0)
+  
+  // Status
+  status        OrderStatus   @default(PENDING)
+  
+  // Guest Order
+  customerName  String?
+  customerPhone String?
+  
+  // Notes
+  notes         String?
+  
+  // Category-specific data
+  metadata      Json?
+  
+  // Timestamps
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  completedAt   DateTime?
+  
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, paymentStatus])
+  @@index([tenantId, createdAt])
+  @@index([customerId])
+  @@index([tenantId, paymentStatus, createdAt])
+}
+
+// ==========================================
+// ORDER ITEM
+// ==========================================
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  
+  // Store info (in case product deleted/changed)
+  name      String
+  price     Float
+  qty       Int
+  subtotal  Float
+  
+  // Additional
+  notes     String?
+  metadata  Json?
+  
+  @@index([orderId])
+  @@index([productId])
+}
