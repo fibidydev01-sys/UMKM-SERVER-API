@@ -77,7 +77,6 @@ export class RedisService implements OnModuleDestroy {
   }
 
   onModuleDestroy(): void {
-    // Upstash REST client doesn't need explicit cleanup
     this.logger.log('Redis service destroyed');
   }
 
@@ -131,41 +130,98 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
-  /**
-   * Delete multiple keys by pattern
-   * Note: Upstash REST doesn't support SCAN, so we track keys manually
-   */
-  delByPrefix(prefix: string): void {
-    if (!this.isEnabled) return;
+  // ==========================================
+  // 🔥 NEW: DELETE BY PATTERN
+  // ==========================================
 
-    // For Upstash, we need to track keys or use specific key deletion
-    // This is a simplified version - in production, consider using a key registry
-    this.logger.debug(`Cache DEL prefix: ${prefix}*`);
+  /**
+   * Delete all keys matching a pattern
+   * Uses SCAN for production safety
+   */
+  async delByPattern(pattern: string): Promise<number> {
+    if (!this.isEnabled || !this.redis) return 0;
+
+    try {
+      // Use KEYS command (Upstash supports it)
+      const keys = await this.redis.keys(pattern);
+
+      if (!keys || keys.length === 0) {
+        this.logger.debug(`Cache DEL pattern: ${pattern} (0 keys)`);
+        return 0;
+      }
+
+      // Delete all matching keys
+      await Promise.all(keys.map((key) => this.redis!.del(key)));
+
+      this.logger.log(`Cache DEL pattern: ${pattern} (${keys.length} keys)`);
+      return keys.length;
+    } catch (error) {
+      this.logger.error(`Cache delByPattern error: ${pattern}`, error);
+      return 0;
+    }
+  }
+
+  /**
+   * 🔥 NEW: Invalidate ALL product-related caches for a tenant
+   * This is the nuclear option - clears everything related to products
+   */
+  async invalidateAllProductCaches(
+    tenantId: string,
+    tenantSlug?: string,
+  ): Promise<void> {
+    if (!this.isEnabled || !this.redis) return;
+
+    this.logger.log(
+      `🔥 Invalidating ALL product caches for tenant: ${tenantId}`,
+    );
+
+    // Delete by specific keys first
+    const specificKeys = [
+      CACHE_KEYS.PRODUCT_CATEGORIES(tenantId),
+      CACHE_KEYS.PRODUCT_LOW_STOCK(tenantId),
+      CACHE_KEYS.TENANT_STATS(tenantId),
+    ];
+
+    if (tenantSlug) {
+      specificKeys.push(CACHE_KEYS.TENANT_PRODUCTS_PUBLIC(tenantSlug));
+    }
+
+    await Promise.all(specificKeys.map((key) => this.del(key)));
+
+    // Delete by patterns (this catches all list queries with different hashes)
+    const patterns = [`products:list:${tenantId}:*`, `products:detail:*`];
+
+    if (tenantSlug) {
+      patterns.push(`store:products:${tenantSlug}:*`);
+      patterns.push(`store:product:${tenantSlug}:*`);
+      patterns.push(`products:slug:${tenantSlug}:*`);
+    }
+
+    await Promise.all(patterns.map((p) => this.delByPattern(p)));
+
+    this.logger.log(
+      `✅ All product caches invalidated for tenant: ${tenantId}`,
+    );
   }
 
   // ==========================================
-  // CACHE-ASIDE PATTERN (Most Common)
+  // CACHE-ASIDE PATTERN
   // ==========================================
 
   /**
    * Get from cache or fetch from source
-   * This is the main method you'll use
    */
   async getOrSet<T>(
     key: string,
     fetcher: () => Promise<T>,
     ttlSeconds: number,
   ): Promise<T> {
-    // Try cache first
     const cached = await this.get<T>(key);
     if (cached !== null) {
       return cached;
     }
 
-    // Fetch from source
     const data = await fetcher();
-
-    // Cache the result
     await this.set(key, data, ttlSeconds);
 
     return data;
@@ -195,7 +251,7 @@ export class RedisService implements OnModuleDestroy {
   }
 
   /**
-   * Invalidate product cache
+   * Invalidate single product cache
    */
   async invalidateProduct(
     productId: string,
@@ -227,7 +283,7 @@ export class RedisService implements OnModuleDestroy {
   }
 
   // ==========================================
-  // UTILITY: Generate hash for query params
+  // UTILITY
   // ==========================================
 
   /**

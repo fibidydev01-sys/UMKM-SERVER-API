@@ -374,14 +374,8 @@ export class ProductsService {
       select: { slug: true },
     });
 
-    // 🔥 Invalidate caches
-    await this.redis.invalidateProduct(
-      product.id,
-      tenantId,
-      tenant?.slug,
-      slug,
-    );
-    await this.redis.invalidateStats(tenantId);
+    // 🔥 Invalidate ALL product caches (ensures new product shows up)
+    await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
     return {
       message: 'Produk berhasil ditambahkan',
@@ -454,7 +448,6 @@ export class ProductsService {
               trackStock: true,
               unit: true,
               images: true,
-              // Skip metadata in list view for performance
               isActive: true,
               isFeatured: true,
               createdAt: true,
@@ -604,14 +597,8 @@ export class ProductsService {
       select: { slug: true },
     });
 
-    // 🔥 Invalidate caches
-    await this.redis.invalidateProduct(
-      productId,
-      tenantId,
-      tenant?.slug,
-      existing.slug ?? undefined,
-    );
-    await this.redis.invalidateStats(tenantId);
+    // 🔥 Invalidate ALL product caches
+    await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
     return {
       message: 'Produk berhasil diupdate',
@@ -649,9 +636,14 @@ export class ProductsService {
       select: { id: true, name: true, stock: true, minStock: true },
     });
 
-    // 🔥 Invalidate low stock cache
-    await this.redis.del(CACHE_KEYS.PRODUCT_LOW_STOCK(tenantId));
-    await this.redis.invalidateStats(tenantId);
+    // Get tenant slug for cache invalidation
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { slug: true },
+    });
+
+    // 🔥 Invalidate ALL product caches
+    await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
     return {
       message:
@@ -687,13 +679,8 @@ export class ProductsService {
       select: { slug: true },
     });
 
-    // 🔥 Invalidate caches
-    await this.redis.invalidateProduct(
-      productId,
-      tenantId,
-      tenant?.slug,
-      existing.slug ?? undefined,
-    );
+    // 🔥 Invalidate ALL product caches
+    await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
     return {
       message: product.isActive
@@ -728,13 +715,8 @@ export class ProductsService {
         data: { isActive: false },
       });
 
-      // 🔥 Invalidate caches
-      await this.redis.invalidateProduct(
-        productId,
-        tenantId,
-        tenant?.slug,
-        existing.slug ?? undefined,
-      );
+      // 🔥 Invalidate ALL product caches
+      await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
       return {
         message: 'Produk dinonaktifkan karena sudah ada di order',
@@ -744,14 +726,8 @@ export class ProductsService {
 
     await this.prisma.product.delete({ where: { id: productId } });
 
-    // 🔥 Invalidate caches
-    await this.redis.invalidateProduct(
-      productId,
-      tenantId,
-      tenant?.slug,
-      existing.slug ?? undefined,
-    );
-    await this.redis.invalidateStats(tenantId);
+    // 🔥 Invalidate ALL product caches
+    await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
     return {
       message: 'Produk berhasil dihapus',
@@ -797,11 +773,8 @@ export class ProductsService {
       select: { slug: true },
     });
 
-    // 🔥 Invalidate all affected products
-    await Promise.all(
-      ids.map((id) => this.redis.invalidateProduct(id, tenantId, tenant?.slug)),
-    );
-    await this.redis.invalidateStats(tenantId);
+    // 🔥 Invalidate ALL product caches (nuclear option)
+    await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
     const totalDeleted = softDeletedCount + hardDeletedCount;
 

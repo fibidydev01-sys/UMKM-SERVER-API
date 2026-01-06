@@ -24,10 +24,7 @@ async function bootstrap() {
       origin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void,
     ) => {
-      // Allow requests with no origin (mobile apps, curl, postman)
       if (!origin) return callback(null, true);
-
-      // Check if origin is allowed
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -36,7 +33,14 @@ async function bootstrap() {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Cookie',
+      'Cache-Control',
+      'Pragma',
+      'Expires',
+    ],
     exposedHeaders: ['Set-Cookie'],
   });
 
@@ -47,7 +51,7 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
-      forbidNonWhitelisted: true,
+      forbidNonWhitelisted: false,
       transform: true,
       transformOptions: {
         enableImplicitConversion: true,
