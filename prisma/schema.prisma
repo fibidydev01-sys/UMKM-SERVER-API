@@ -55,11 +55,25 @@ model Tenant {
   landingConfig Json?
   
   // ==========================================
-  // SEO FIELDS (NEW)
+  // SEO FIELDS
   // ==========================================
   metaTitle       String?   @db.VarChar(60)
   metaDescription String?   @db.VarChar(160)
   socialLinks     Json?     // { instagram, facebook, tiktok, youtube, twitter }
+  
+  // ==========================================
+  // PAYMENT SETTINGS (NEW)
+  // ==========================================
+  currency        String    @default("IDR")
+  taxRate         Float     @default(0)        // Percentage, e.g., 11 for 11%
+  paymentMethods  Json?     // See PaymentMethods type below
+  
+  // ==========================================
+  // SHIPPING SETTINGS (NEW)
+  // ==========================================
+  freeShippingThreshold  Float?                // Minimum order for free shipping
+  defaultShippingCost    Float     @default(0) // Default shipping cost
+  shippingMethods        Json?                 // See ShippingMethods type below
   
   password      String
   status        TenantStatus @default(ACTIVE)

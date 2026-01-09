@@ -39,6 +39,7 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
+    // In register method, update the create data:
     const tenant = await this.prisma.tenant.create({
       data: {
         slug: dto.slug.toLowerCase(),
@@ -50,6 +51,74 @@ export class AuthService {
         description: dto.description,
         phone: dto.phone,
         address: dto.address,
+        // ==========================================
+        // DEFAULT PAYMENT & SHIPPING (NEW)
+        // ==========================================
+        currency: 'IDR',
+        taxRate: 0,
+        paymentMethods: {
+          bankAccounts: [],
+          eWallets: [],
+          cod: { enabled: false, note: '' },
+        },
+        freeShippingThreshold: null,
+        defaultShippingCost: 0,
+        shippingMethods: {
+          couriers: [
+            { id: 'jne', name: 'JNE', enabled: true, note: '' },
+            { id: 'jt', name: 'J&T Express', enabled: true, note: '' },
+            { id: 'sicepat', name: 'SiCepat', enabled: false, note: '' },
+            { id: 'anteraja', name: 'AnterAja', enabled: false, note: '' },
+            { id: 'ninja', name: 'Ninja Express', enabled: false, note: '' },
+          ],
+        },
+        // ==========================================
+        // DEFAULT LANDING CONFIG (AUTO-ENABLED)
+        // ==========================================
+        landingConfig: {
+          enabled: true,
+          hero: {
+            enabled: true,
+            title: '',
+            subtitle: '',
+            config: {
+              layout: 'centered',
+              showCta: true,
+              ctaText: 'Lihat Produk',
+              overlayOpacity: 0.5,
+            },
+          },
+          about: {
+            enabled: false,
+            title: 'Tentang Kami',
+            subtitle: '',
+            config: { showImage: true, features: [] },
+          },
+          products: {
+            enabled: true,
+            title: 'Produk Kami',
+            subtitle: 'Pilihan produk terbaik untuk Anda',
+            config: { displayMode: 'featured', limit: 8, showViewAll: true },
+          },
+          testimonials: {
+            enabled: false,
+            title: 'Testimoni',
+            subtitle: 'Apa kata pelanggan kami',
+            config: { items: [] },
+          },
+          contact: {
+            enabled: true,
+            title: 'Hubungi Kami',
+            subtitle: '',
+            config: { showMap: false, showForm: false, showSocialMedia: true },
+          },
+          cta: {
+            enabled: false,
+            title: 'Siap Berbelanja?',
+            subtitle: '',
+            config: { buttonText: 'Mulai Belanja', style: 'primary' },
+          },
+        },
       },
     });
 

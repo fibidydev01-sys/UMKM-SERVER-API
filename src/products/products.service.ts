@@ -21,10 +21,6 @@ export class ProductsService {
     private redis: RedisService,
   ) {}
 
-  // ══════════════════════════════════════════════════════════════
-  // SLUG HELPERS
-  // ══════════════════════════════════════════════════════════════
-
   private generateSlug(name: string): string {
     return name
       .toLowerCase()
@@ -65,10 +61,6 @@ export class ProductsService {
 
     return slug;
   }
-
-  // ══════════════════════════════════════════════════════════════
-  // PUBLIC METHODS (dengan caching)
-  // ══════════════════════════════════════════════════════════════
 
   async findPublicProduct(productId: string) {
     const cacheKey = CACHE_KEYS.PRODUCT_DETAIL(productId);
@@ -328,10 +320,6 @@ export class ProductsService {
     );
   }
 
-  // ══════════════════════════════════════════════════════════════
-  // PROTECTED: CRUD (dengan cache invalidation)
-  // ══════════════════════════════════════════════════════════════
-
   async create(tenantId: string, dto: CreateProductDto) {
     if (dto.sku) {
       const existingSku = await this.prisma.product.findUnique({
@@ -368,13 +356,11 @@ export class ProductsService {
       },
     });
 
-    // Get tenant slug for cache invalidation
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { slug: true },
     });
 
-    // 🔥 Invalidate ALL product caches (ensures new product shows up)
     await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
     return {
@@ -591,13 +577,11 @@ export class ProductsService {
       },
     });
 
-    // Get tenant slug for cache invalidation
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { slug: true },
     });
 
-    // 🔥 Invalidate ALL product caches
     await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
     return {
@@ -636,13 +620,11 @@ export class ProductsService {
       select: { id: true, name: true, stock: true, minStock: true },
     });
 
-    // Get tenant slug for cache invalidation
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { slug: true },
     });
 
-    // 🔥 Invalidate ALL product caches
     await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
     return {
@@ -673,13 +655,11 @@ export class ProductsService {
       select: { id: true, name: true, isActive: true },
     });
 
-    // Get tenant slug for cache invalidation
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { slug: true },
     });
 
-    // 🔥 Invalidate ALL product caches
     await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
     return {
@@ -700,89 +680,46 @@ export class ProductsService {
       throw new NotFoundException('Produk tidak ditemukan');
     }
 
-    const ordersWithProduct = await this.prisma.orderItem.count({
-      where: { productId },
-    });
-
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { slug: true },
     });
 
-    if (ordersWithProduct > 0) {
-      await this.prisma.product.update({
-        where: { id: productId },
-        data: { isActive: false },
-      });
-
-      // 🔥 Invalidate ALL product caches
-      await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
-
-      return {
-        message: 'Produk dinonaktifkan karena sudah ada di order',
-        softDeleted: true,
-      };
-    }
-
     await this.prisma.product.delete({ where: { id: productId } });
 
-    // 🔥 Invalidate ALL product caches
     await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
     return {
       message: 'Produk berhasil dihapus',
-      softDeleted: false,
     };
   }
 
   async bulkDelete(tenantId: string, ids: string[]) {
-    const productsWithOrders = await this.prisma.orderItem.findMany({
-      where: { productId: { in: ids } },
-      select: { productId: true },
-      distinct: ['productId'],
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: ids }, tenantId },
+      select: { id: true },
     });
 
-    const productIdsWithOrders = new Set(
-      productsWithOrders.map((p) => p.productId).filter(Boolean),
-    );
-
-    const toSoftDelete = ids.filter((id) => productIdsWithOrders.has(id));
-    const toHardDelete = ids.filter((id) => !productIdsWithOrders.has(id));
-
-    let softDeletedCount = 0;
-    let hardDeletedCount = 0;
-
-    if (toSoftDelete.length > 0) {
-      const result = await this.prisma.product.updateMany({
-        where: { id: { in: toSoftDelete }, tenantId },
-        data: { isActive: false },
-      });
-      softDeletedCount = result.count;
+    if (products.length === 0) {
+      throw new NotFoundException('Tidak ada produk yang ditemukan');
     }
 
-    if (toHardDelete.length > 0) {
-      const result = await this.prisma.product.deleteMany({
-        where: { id: { in: toHardDelete }, tenantId },
-      });
-      hardDeletedCount = result.count;
-    }
+    const validIds = products.map((p) => p.id);
 
-    // Get tenant slug for cache invalidation
+    const result = await this.prisma.product.deleteMany({
+      where: { id: { in: validIds }, tenantId },
+    });
+
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { slug: true },
     });
 
-    // 🔥 Invalidate ALL product caches (nuclear option)
     await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
-    const totalDeleted = softDeletedCount + hardDeletedCount;
-
     return {
-      message: `${totalDeleted} produk berhasil dihapus`,
-      count: totalDeleted,
-      hardDeleted: hardDeletedCount,
-      softDeleted: softDeletedCount,
+      message: `${result.count} produk berhasil dihapus`,
+      count: result.count,
     };
   }
 }

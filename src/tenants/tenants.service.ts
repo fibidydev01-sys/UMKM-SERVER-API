@@ -16,9 +16,7 @@ export class TenantsService {
     private redis: RedisService,
   ) {}
 
-  // ==========================================
-  // PUBLIC: GET BY SLUG (dengan caching)
-  // ==========================================
+  // In findBySlug method, update the select object:
   async findBySlug(slug: string) {
     const cacheKey = CACHE_KEYS.TENANT_SLUG(slug.toLowerCase());
 
@@ -43,6 +41,16 @@ export class TenantsService {
             metaTitle: true,
             metaDescription: true,
             socialLinks: true,
+            // ==========================================
+            // PAYMENT & SHIPPING (NEW)
+            // ==========================================
+            currency: true,
+            taxRate: true,
+            paymentMethods: true,
+            freeShippingThreshold: true,
+            defaultShippingCost: true,
+            shippingMethods: true,
+            // ==========================================
             status: true,
             createdAt: true,
             _count: {
@@ -70,7 +78,6 @@ export class TenantsService {
       CACHE_TTL.TENANT_PUBLIC,
     );
   }
-
   // ==========================================
   // PUBLIC: GET PRODUCTS BY SLUG (dengan caching)
   // ==========================================
@@ -129,9 +136,7 @@ export class TenantsService {
     );
   }
 
-  // ==========================================
-  // PROTECTED: GET CURRENT TENANT
-  // ==========================================
+  // In findMe method, update the select object:
   async findMe(tenantId: string) {
     const cacheKey = CACHE_KEYS.TENANT_ID(tenantId);
 
@@ -157,6 +162,16 @@ export class TenantsService {
             metaTitle: true,
             metaDescription: true,
             socialLinks: true,
+            // ==========================================
+            // PAYMENT & SHIPPING (NEW)
+            // ==========================================
+            currency: true,
+            taxRate: true,
+            paymentMethods: true,
+            freeShippingThreshold: true,
+            defaultShippingCost: true,
+            shippingMethods: true,
+            // ==========================================
             status: true,
             createdAt: true,
             updatedAt: true,
@@ -179,10 +194,7 @@ export class TenantsService {
       CACHE_TTL.TENANT_PRIVATE,
     );
   }
-
-  // ==========================================
-  // PROTECTED: UPDATE CURRENT TENANT
-  // ==========================================
+  // In updateMe method, update the data object:
   async updateMe(tenantId: string, dto: UpdateTenantDto) {
     const existing = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -196,6 +208,7 @@ export class TenantsService {
     const tenant = await this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
+        // Basic info
         name: dto.name,
         description: dto.description,
         whatsapp: dto.whatsapp,
@@ -205,9 +218,21 @@ export class TenantsService {
         banner: dto.banner,
         theme: dto.theme,
         landingConfig: dto.landingConfig as unknown as Prisma.InputJsonValue,
+        // SEO
         metaTitle: dto.metaTitle,
         metaDescription: dto.metaDescription,
         socialLinks: dto.socialLinks as unknown as Prisma.InputJsonValue,
+        // ==========================================
+        // PAYMENT & SHIPPING (NEW)
+        // ==========================================
+        currency: dto.currency,
+        taxRate: dto.taxRate,
+        paymentMethods: dto.paymentMethods as unknown as Prisma.InputJsonValue,
+        freeShippingThreshold: dto.freeShippingThreshold,
+        defaultShippingCost: dto.defaultShippingCost,
+        shippingMethods:
+          dto.shippingMethods as unknown as Prisma.InputJsonValue,
+        // ==========================================
       },
       select: {
         id: true,
@@ -226,6 +251,16 @@ export class TenantsService {
         metaTitle: true,
         metaDescription: true,
         socialLinks: true,
+        // ==========================================
+        // PAYMENT & SHIPPING (NEW)
+        // ==========================================
+        currency: true,
+        taxRate: true,
+        paymentMethods: true,
+        freeShippingThreshold: true,
+        defaultShippingCost: true,
+        shippingMethods: true,
+        // ==========================================
         status: true,
         updatedAt: true,
       },
