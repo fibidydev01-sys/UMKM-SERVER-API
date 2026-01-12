@@ -7,19 +7,22 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { RegisterDto, LoginDto } from './dto';
-import type { Tenant } from '@prisma/client';
+import { getDefaultLandingConfig } from '../validators/landing-config.validator';
+import type { Tenant, Prisma } from '@prisma/client'; // ✅ FIX: Import Prisma
+
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_SECONDS = 900;
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private redis: RedisService,
   ) {}
 
-  // ==========================================
-  // REGISTER
-  // ==========================================
   async register(dto: RegisterDto) {
     const existingEmail = await this.prisma.tenant.findUnique({
       where: { email: dto.email },
@@ -37,23 +40,19 @@ export class AuthService {
       throw new ConflictException('Slug sudah digunakan');
     }
 
-    const hashedPassword = await bcrypt.hash(dto.password, 10);
+    const hashedPassword = await bcrypt.hash(dto.password, 12);
 
-    // In register method, update the create data:
     const tenant = await this.prisma.tenant.create({
       data: {
         slug: dto.slug.toLowerCase(),
         name: dto.name,
         category: dto.category,
-        email: dto.email,
+        email: dto.email.toLowerCase(),
         password: hashedPassword,
         whatsapp: dto.whatsapp,
         description: dto.description,
         phone: dto.phone,
         address: dto.address,
-        // ==========================================
-        // DEFAULT PAYMENT & SHIPPING (NEW)
-        // ==========================================
         currency: 'IDR',
         taxRate: 0,
         paymentMethods: {
@@ -72,53 +71,9 @@ export class AuthService {
             { id: 'ninja', name: 'Ninja Express', enabled: false, note: '' },
           ],
         },
-        // ==========================================
-        // DEFAULT LANDING CONFIG (AUTO-ENABLED)
-        // ==========================================
-        landingConfig: {
-          enabled: true,
-          hero: {
-            enabled: true,
-            title: '',
-            subtitle: '',
-            config: {
-              layout: 'centered',
-              showCta: true,
-              ctaText: 'Lihat Produk',
-              overlayOpacity: 0.5,
-            },
-          },
-          about: {
-            enabled: false,
-            title: 'Tentang Kami',
-            subtitle: '',
-            config: { showImage: true, features: [] },
-          },
-          products: {
-            enabled: true,
-            title: 'Produk Kami',
-            subtitle: 'Pilihan produk terbaik untuk Anda',
-            config: { displayMode: 'featured', limit: 8, showViewAll: true },
-          },
-          testimonials: {
-            enabled: false,
-            title: 'Testimoni',
-            subtitle: 'Apa kata pelanggan kami',
-            config: { items: [] },
-          },
-          contact: {
-            enabled: true,
-            title: 'Hubungi Kami',
-            subtitle: '',
-            config: { showMap: false, showForm: false, showSocialMedia: true },
-          },
-          cta: {
-            enabled: false,
-            title: 'Siap Berbelanja?',
-            subtitle: '',
-            config: { buttonText: 'Mulai Belanja', style: 'primary' },
-          },
-        },
+        // ✅ FIX: Cast to Prisma.InputJsonValue
+        landingConfig:
+          getDefaultLandingConfig() as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -130,27 +85,40 @@ export class AuthService {
     };
   }
 
-  // ==========================================
-  // LOGIN
-  // ==========================================
   async login(dto: LoginDto) {
+    const email = dto.email.toLowerCase();
+
+    const lockKey = `login:lockout:${email}`;
+    const failKey = `login:fails:${email}`;
+
+    const isLocked = await this.redis.get<string>(lockKey);
+    if (isLocked) {
+      throw new UnauthorizedException(
+        'Akun terkunci karena terlalu banyak percobaan gagal. Coba lagi dalam 15 menit.',
+      );
+    }
+
     const tenant = await this.prisma.tenant.findUnique({
-      where: { email: dto.email },
+      where: { email },
     });
 
     if (!tenant) {
+      await this.trackFailedLogin(email, failKey, lockKey);
       throw new UnauthorizedException('Email atau password salah');
     }
 
     const isPasswordValid = await bcrypt.compare(dto.password, tenant.password);
 
     if (!isPasswordValid) {
+      await this.trackFailedLogin(email, failKey, lockKey);
       throw new UnauthorizedException('Email atau password salah');
     }
 
     if (tenant.status !== 'ACTIVE') {
       throw new UnauthorizedException('Akun tidak aktif');
     }
+
+    await this.redis.del(failKey);
 
     const token = this.generateToken(tenant);
 
@@ -160,9 +128,22 @@ export class AuthService {
     };
   }
 
-  // ==========================================
-  // GET ME
-  // ==========================================
+  private async trackFailedLogin(
+    email: string,
+    failKey: string,
+    lockKey: string,
+  ): Promise<void> {
+    const currentFails = await this.redis.get<number>(failKey);
+    const failCount = (currentFails || 0) + 1;
+
+    await this.redis.set(failKey, failCount, LOCKOUT_DURATION_SECONDS);
+
+    if (failCount >= MAX_LOGIN_ATTEMPTS) {
+      await this.redis.set(lockKey, 'locked', LOCKOUT_DURATION_SECONDS);
+      console.warn(`[Security] Account locked due to failed logins: ${email}`);
+    }
+  }
+
   async me(tenantId: string) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -199,9 +180,6 @@ export class AuthService {
     return tenant;
   }
 
-  // ==========================================
-  // REFRESH TOKEN
-  // ==========================================
   async refresh(tenantId: string) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -219,9 +197,6 @@ export class AuthService {
     };
   }
 
-  // ==========================================
-  // VERIFY TOKEN
-  // ==========================================
   async verifyToken(token: string) {
     try {
       const payload = this.jwtService.verify(token);
@@ -256,9 +231,6 @@ export class AuthService {
     }
   }
 
-  // ==========================================
-  // HELPERS
-  // ==========================================
   private generateToken(tenant: Tenant): string {
     const payload = {
       sub: tenant.id,

@@ -9,6 +9,9 @@ import { Prisma } from '@prisma/client';
 import { UpdateTenantDto, ChangePasswordDto } from './dto';
 import * as bcrypt from 'bcrypt';
 
+// 🔥 NEW: Import validator
+import { validateAndSanitizeLandingConfig } from '../validators/landing-config.validator';
+
 @Injectable()
 export class TenantsService {
   constructor(
@@ -16,7 +19,9 @@ export class TenantsService {
     private redis: RedisService,
   ) {}
 
-  // In findBySlug method, update the select object:
+  // ==========================================
+  // PUBLIC: GET TENANT BY SLUG (dengan caching)
+  // ==========================================
   async findBySlug(slug: string) {
     const cacheKey = CACHE_KEYS.TENANT_SLUG(slug.toLowerCase());
 
@@ -41,16 +46,12 @@ export class TenantsService {
             metaTitle: true,
             metaDescription: true,
             socialLinks: true,
-            // ==========================================
-            // PAYMENT & SHIPPING (NEW)
-            // ==========================================
             currency: true,
             taxRate: true,
             paymentMethods: true,
             freeShippingThreshold: true,
             defaultShippingCost: true,
             shippingMethods: true,
-            // ==========================================
             status: true,
             createdAt: true,
             _count: {
@@ -78,11 +79,11 @@ export class TenantsService {
       CACHE_TTL.TENANT_PUBLIC,
     );
   }
+
   // ==========================================
   // PUBLIC: GET PRODUCTS BY SLUG (dengan caching)
   // ==========================================
   async findProductsBySlug(slug: string, category?: string) {
-    // Untuk products dengan filter, kita cache per kombinasi
     const cacheKey = category
       ? `${CACHE_KEYS.TENANT_PRODUCTS_PUBLIC(slug)}:${category}`
       : CACHE_KEYS.TENANT_PRODUCTS_PUBLIC(slug);
@@ -124,8 +125,6 @@ export class TenantsService {
             images: true,
             isFeatured: true,
             slug: true,
-            // OPTIMIZATION: Skip metadata kalau ga perlu di public
-            // metadata: true,
           },
           orderBy: [{ isFeatured: 'desc' }, { createdAt: 'desc' }],
         });
@@ -136,7 +135,9 @@ export class TenantsService {
     );
   }
 
-  // In findMe method, update the select object:
+  // ==========================================
+  // PROTECTED: GET ME
+  // ==========================================
   async findMe(tenantId: string) {
     const cacheKey = CACHE_KEYS.TENANT_ID(tenantId);
 
@@ -162,16 +163,12 @@ export class TenantsService {
             metaTitle: true,
             metaDescription: true,
             socialLinks: true,
-            // ==========================================
-            // PAYMENT & SHIPPING (NEW)
-            // ==========================================
             currency: true,
             taxRate: true,
             paymentMethods: true,
             freeShippingThreshold: true,
             defaultShippingCost: true,
             shippingMethods: true,
-            // ==========================================
             status: true,
             createdAt: true,
             updatedAt: true,
@@ -194,7 +191,10 @@ export class TenantsService {
       CACHE_TTL.TENANT_PRIVATE,
     );
   }
-  // In updateMe method, update the data object:
+
+  // ==========================================
+  // 🔥 UPDATED: UPDATE ME with LandingConfig Validation
+  // ==========================================
   async updateMe(tenantId: string, dto: UpdateTenantDto) {
     const existing = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -203,6 +203,36 @@ export class TenantsService {
 
     if (!existing) {
       throw new NotFoundException('Tenant tidak ditemukan');
+    }
+
+    // ==========================================
+    // 🔥 NEW: Validate landingConfig before save
+    // ==========================================
+    let validatedLandingConfig: Prisma.InputJsonValue | undefined = undefined;
+
+    if (dto.landingConfig !== undefined) {
+      const validationResult = validateAndSanitizeLandingConfig(
+        dto.landingConfig,
+      );
+
+      if (!validationResult.valid) {
+        throw new BadRequestException({
+          message: 'Invalid landing page configuration',
+          errors: validationResult.errors,
+          code: 'INVALID_LANDING_CONFIG',
+        });
+      }
+
+      validatedLandingConfig =
+        validationResult.data as unknown as Prisma.InputJsonValue;
+
+      // Log warnings for debugging
+      if (validationResult.warnings?.length) {
+        console.warn(
+          `[TenantsService] Landing config warnings for tenant ${tenantId}:`,
+          validationResult.warnings,
+        );
+      }
     }
 
     const tenant = await this.prisma.tenant.update({
@@ -217,14 +247,13 @@ export class TenantsService {
         logo: dto.logo,
         banner: dto.banner,
         theme: dto.theme,
-        landingConfig: dto.landingConfig as unknown as Prisma.InputJsonValue,
+        // 🔥 UPDATED: Use validated config
+        landingConfig: validatedLandingConfig,
         // SEO
         metaTitle: dto.metaTitle,
         metaDescription: dto.metaDescription,
         socialLinks: dto.socialLinks as unknown as Prisma.InputJsonValue,
-        // ==========================================
-        // PAYMENT & SHIPPING (NEW)
-        // ==========================================
+        // Payment & Shipping
         currency: dto.currency,
         taxRate: dto.taxRate,
         paymentMethods: dto.paymentMethods as unknown as Prisma.InputJsonValue,
@@ -232,7 +261,6 @@ export class TenantsService {
         defaultShippingCost: dto.defaultShippingCost,
         shippingMethods:
           dto.shippingMethods as unknown as Prisma.InputJsonValue,
-        // ==========================================
       },
       select: {
         id: true,
@@ -251,16 +279,12 @@ export class TenantsService {
         metaTitle: true,
         metaDescription: true,
         socialLinks: true,
-        // ==========================================
-        // PAYMENT & SHIPPING (NEW)
-        // ==========================================
         currency: true,
         taxRate: true,
         paymentMethods: true,
         freeShippingThreshold: true,
         defaultShippingCost: true,
         shippingMethods: true,
-        // ==========================================
         status: true,
         updatedAt: true,
       },
@@ -312,7 +336,7 @@ export class TenantsService {
       );
     }
 
-    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 12); // 🔥 Increased from 10 to 12
 
     await this.prisma.tenant.update({
       where: { id: tenantId },
@@ -326,7 +350,6 @@ export class TenantsService {
 
   // ==========================================
   // 🚀 OPTIMIZED: GET DASHBOARD STATS
-  // Dari 15+ queries jadi lebih efisien dengan caching
   // ==========================================
   async getDashboardStats(tenantId: string) {
     const cacheKey = CACHE_KEYS.TENANT_STATS(tenantId);
@@ -350,13 +373,8 @@ export class TenantsService {
         const startOfWeek = new Date(now);
         startOfWeek.setDate(now.getDate() - 7);
 
-        // ==========================================
-        // OPTIMIZATION 1: Raw SQL untuk aggregate queries
-        // Menggabungkan multiple counts jadi 1 query
-        // ==========================================
         const [productStats, customerStats, orderStats, revenueStats] =
           await Promise.all([
-            // Product stats - 1 query instead of 3
             this.prisma.$queryRaw<
               [{ total: bigint; active: bigint; low_stock: bigint }]
             >`
@@ -367,16 +385,8 @@ export class TenantsService {
             FROM "Product"
             WHERE "tenantId" = ${tenantId}
           `,
-
-            // Customer stats - 1 query instead of 3
             this.prisma.$queryRaw<
-              [
-                {
-                  total: bigint;
-                  this_month: bigint;
-                  last_month: bigint;
-                },
-              ]
+              [{ total: bigint; this_month: bigint; last_month: bigint }]
             >`
             SELECT 
               COUNT(*) as total,
@@ -385,8 +395,6 @@ export class TenantsService {
             FROM "Customer"
             WHERE "tenantId" = ${tenantId}
           `,
-
-            // Order stats - 1 query instead of 6
             this.prisma.$queryRaw<
               [
                 {
@@ -409,8 +417,6 @@ export class TenantsService {
             FROM "Order"
             WHERE "tenantId" = ${tenantId}
           `,
-
-            // Revenue stats - 1 query instead of 3
             this.prisma.$queryRaw<
               [
                 {
@@ -429,7 +435,6 @@ export class TenantsService {
           `,
           ]);
 
-        // Recent data - these we still need separate queries but they're light
         const [recentOrders, lowStockItems] = await Promise.all([
           this.prisma.order.findMany({
             where: { tenantId },
@@ -467,13 +472,11 @@ export class TenantsService {
           }),
         ]);
 
-        // Calculate trends
         const calculateTrend = (current: number, previous: number): number => {
           if (previous === 0) return current > 0 ? 100 : 0;
           return Math.round(((current - previous) / previous) * 100);
         };
 
-        // Convert BigInt to Number (PostgreSQL returns bigint for COUNT)
         const products = {
           total: Number(productStats[0]?.total ?? 0),
           active: Number(productStats[0]?.active ?? 0),
@@ -482,10 +485,8 @@ export class TenantsService {
 
         const customersThisMonth = Number(customerStats[0]?.this_month ?? 0);
         const customersLastMonth = Number(customerStats[0]?.last_month ?? 0);
-
         const ordersThisMonth = Number(orderStats[0]?.this_month ?? 0);
         const ordersLastMonth = Number(orderStats[0]?.last_month ?? 0);
-
         const thisMonthRevenue = Number(revenueStats[0]?.this_month ?? 0);
         const lastMonthRevenue = Number(revenueStats[0]?.last_month ?? 0);
 

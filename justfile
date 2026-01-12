@@ -17,7 +17,7 @@ dev:
     @echo "✅ API started!"
     @echo ""
     @echo "📊 API: http://localhost:8000"
-    @echo "🏥 Health: http://localhost:8000/health"
+    @echo "🏥 Health: http://localhost:8000/api/health"
     @echo ""
     @just logs
 
@@ -254,11 +254,11 @@ bash:
 # Check health of API
 health:
     @echo "🏥 Checking API health..."
-    @curl -s http://localhost:8000/health | jq '.' 2>/dev/null || curl -s http://localhost:8000/health || echo "❌ API not responding"
+    @curl -s http://localhost:8000/api/health | jq '.' 2>/dev/null || curl -s http://localhost:8000/api/health || echo "❌ API not responding"
 
 # Quick health check
 ping:
-    @curl -s http://localhost:8000/health | jq '.' 2>/dev/null || curl -s http://localhost:8000/health || echo "❌ API not responding"
+    @curl -s http://localhost:8000/api/health | jq '.' 2>/dev/null || curl -s http://localhost:8000/api/health || echo "❌ API not responding"
 
 # ====================
 # 🔧 UTILITIES
@@ -298,7 +298,7 @@ quickstart:
     @echo ""
     @echo "⏳ Waiting for API to be ready (30 seconds)..."
     @sleep 30
-    @curl -sf http://localhost:8000/health > /dev/null 2>&1 && echo "✅ API is healthy!" || echo "⚠️  API may need more time, check: just logs"
+    @curl -sf http://localhost:8000/api/health > /dev/null 2>&1 && echo "✅ API is healthy!" || echo "⚠️  API may need more time, check: just logs"
     @echo ""
     @echo "🗄️  Setting up Supabase database..."
     @just db-setup
@@ -313,7 +313,7 @@ quickstart:
     @echo ""
     @echo "🌐 Service URLs:"
     @echo "   API:        http://localhost:8000"
-    @echo "   Health:     http://localhost:8000/health"
+    @echo "   Health:     http://localhost:8000/api/health"
     @echo "   Docs:       http://localhost:8000/api"
     @echo ""
     @echo "🗄️  Database:"

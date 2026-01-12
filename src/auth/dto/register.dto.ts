@@ -32,9 +32,16 @@ export class RegisterDto {
   @IsNotEmpty({ message: 'Email tidak boleh kosong' })
   email: string;
 
+  // ==========================================
+  // 🔥 UPDATED: Stronger password policy
+  // Min 8 chars, must have uppercase, lowercase, and number
+  // ==========================================
   @IsString()
   @IsNotEmpty({ message: 'Password tidak boleh kosong' })
-  @MinLength(6, { message: 'Password minimal 6 karakter' })
+  @MinLength(8, { message: 'Password minimal 8 karakter' })
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
+    message: 'Password harus mengandung huruf besar, huruf kecil, dan angka',
+  })
   password: string;
 
   @IsString()
