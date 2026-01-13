@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService, CACHE_TTL, CACHE_KEYS } from '../redis/redis.service';
+import { SeoService } from '../seo/seo.service'; // 🚀 SEO SERVICE
 import {
   CreateProductDto,
   UpdateProductDto,
@@ -19,6 +20,7 @@ export class ProductsService {
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
+    private seoService: SeoService, // 🚀 SEO SERVICE INJECTION
   ) {}
 
   private generateSlug(name: string): string {
@@ -61,6 +63,10 @@ export class ProductsService {
 
     return slug;
   }
+
+  // ==========================================
+  // PUBLIC METHODS
+  // ==========================================
 
   async findPublicProduct(productId: string) {
     const cacheKey = CACHE_KEYS.PRODUCT_DETAIL(productId);
@@ -320,6 +326,9 @@ export class ProductsService {
     );
   }
 
+  // ==========================================
+  // 🚀 CREATE - dengan SEO indexing
+  // ==========================================
   async create(tenantId: string, dto: CreateProductDto) {
     if (dto.sku) {
       const existingSku = await this.prisma.product.findUnique({
@@ -363,11 +372,24 @@ export class ProductsService {
 
     await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
+    // 🚀 SEO: Index new product
+    if (tenant) {
+      this.seoService
+        .onProductCreated(tenant.slug, product.id, product.slug ?? undefined)
+        .catch((error) => {
+          console.error('[SEO] Failed to index new product:', error.message);
+        });
+    }
+
     return {
       message: 'Produk berhasil ditambahkan',
       product,
     };
   }
+
+  // ==========================================
+  // PROTECTED METHODS
+  // ==========================================
 
   async findAll(tenantId: string, query: QueryProductDto) {
     const queryHash = this.redis.hashQuery({ ...query, tenantId });
@@ -529,6 +551,9 @@ export class ProductsService {
     return product;
   }
 
+  // ==========================================
+  // 🚀 UPDATE - dengan SEO reindexing
+  // ==========================================
   async update(tenantId: string, productId: string, dto: UpdateProductDto) {
     const existing = await this.prisma.product.findFirst({
       where: { id: productId, tenantId },
@@ -584,6 +609,14 @@ export class ProductsService {
 
     await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
+    // 🚀 SEO: Reindex updated product
+    if (tenant) {
+      this.seoService
+        .onProductUpdated(tenant.slug, product.id, product.slug ?? undefined)
+        .catch((error) => {
+          console.error('[SEO] Failed to reindex product:', error.message);
+        });
+    }
     return {
       message: 'Produk berhasil diupdate',
       product,
@@ -670,6 +703,9 @@ export class ProductsService {
     };
   }
 
+  // ==========================================
+  // 🚀 REMOVE - dengan SEO notification
+  // ==========================================
   async remove(tenantId: string, productId: string) {
     const existing = await this.prisma.product.findFirst({
       where: { id: productId, tenantId },
@@ -689,11 +725,24 @@ export class ProductsService {
 
     await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
+    // 🚀 SEO: Notify search engines about deleted product
+    if (tenant) {
+      this.seoService.onProductDeleted(tenant.slug).catch((error) => {
+        console.error(
+          '[SEO] Failed to notify product deletion:',
+          error.message,
+        );
+      });
+    }
+
     return {
       message: 'Produk berhasil dihapus',
     };
   }
 
+  // ==========================================
+  // 🚀 BULK DELETE - dengan SEO notification
+  // ==========================================
   async bulkDelete(tenantId: string, ids: string[]) {
     const products = await this.prisma.product.findMany({
       where: { id: { in: ids }, tenantId },
@@ -716,6 +765,16 @@ export class ProductsService {
     });
 
     await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
+
+    // 🚀 SEO: Notify search engines about bulk deletion
+    if (tenant) {
+      this.seoService.onProductDeleted(tenant.slug).catch((error) => {
+        console.error(
+          '[SEO] Failed to notify bulk product deletion:',
+          error.message,
+        );
+      });
+    }
 
     return {
       message: `${result.count} produk berhasil dihapus`,

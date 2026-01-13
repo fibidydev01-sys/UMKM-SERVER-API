@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService, CACHE_TTL, CACHE_KEYS } from '../redis/redis.service';
+import { SeoService } from '../seo/seo.service';
 import { Prisma } from '@prisma/client';
 import { UpdateTenantDto, ChangePasswordDto } from './dto';
 import * as bcrypt from 'bcrypt';
@@ -17,6 +18,7 @@ export class TenantsService {
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
+    private seoService: SeoService, // 🚀 ADD THIS
   ) {}
 
   // ==========================================
@@ -292,7 +294,9 @@ export class TenantsService {
 
     // 🔥 INVALIDATE CACHE
     await this.redis.invalidateTenant(tenantId, existing.slug);
-
+    this.seoService.onTenantUpdated(existing.slug).catch((error) => {
+      console.error('[SEO] Failed to reindex tenant:', error.message);
+    });
     return {
       message: 'Profil berhasil diupdate',
       tenant,

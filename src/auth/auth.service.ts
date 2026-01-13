@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { SeoService } from '../seo/seo.service';
 import { RegisterDto, LoginDto } from './dto';
 import { getDefaultLandingConfig } from '../validators/landing-config.validator';
 import type { Tenant, Prisma } from '@prisma/client'; // ✅ FIX: Import Prisma
@@ -21,6 +22,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private redis: RedisService,
+    private seoService: SeoService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -75,6 +77,10 @@ export class AuthService {
         landingConfig:
           getDefaultLandingConfig() as unknown as Prisma.InputJsonValue,
       },
+    });
+
+    this.seoService.onTenantCreated(tenant.slug).catch((error) => {
+      console.error('[SEO] Failed to index new tenant:', error.message);
     });
 
     const token = this.generateToken(tenant);
