@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { TenantsModule } from '../tenants/tenants.module';
+import { SeoModule } from '../seo/seo.module'; // ✅ TAMBAH INI
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { TenantsModule } from '../tenants/tenants.module';
       inject: [ConfigService],
     }),
     TenantsModule,
+    SeoModule, // ✅ TAMBAH INI
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
