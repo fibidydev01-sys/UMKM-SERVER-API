@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService, CACHE_TTL, CACHE_KEYS } from '../redis/redis.service';
@@ -10,28 +11,35 @@ import { Prisma } from '@prisma/client';
 import { UpdateTenantDto, ChangePasswordDto } from './dto';
 import * as bcrypt from 'bcrypt';
 
-// 🔥 NEW: Import validator
+// 🔥 Import validator
 import { validateAndSanitizeLandingConfig } from '../validators/landing-config.validator';
 
 @Injectable()
 export class TenantsService {
+  private readonly logger = new Logger(TenantsService.name);
+
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
-    private seoService: SeoService, // 🚀 ADD THIS
+    private seoService: SeoService,
   ) {}
 
   // ==========================================
   // PUBLIC: GET TENANT BY SLUG (dengan caching)
   // ==========================================
   async findBySlug(slug: string) {
-    const cacheKey = CACHE_KEYS.TENANT_SLUG(slug.toLowerCase());
+    const normalizedSlug = slug.toLowerCase();
+    const cacheKey = CACHE_KEYS.TENANT_SLUG(normalizedSlug);
+
+    this.logger.debug(`[findBySlug] Looking for slug: ${normalizedSlug}`);
 
     return this.redis.getOrSet(
       cacheKey,
       async () => {
+        this.logger.debug(`[findBySlug] Cache MISS - fetching from DB`);
+
         const tenant = await this.prisma.tenant.findUnique({
-          where: { slug: slug.toLowerCase() },
+          where: { slug: normalizedSlug },
           select: {
             id: true,
             slug: true,
@@ -75,6 +83,10 @@ export class TenantsService {
         if (tenant.status !== 'ACTIVE') {
           throw new NotFoundException(`Toko tidak aktif`);
         }
+
+        this.logger.debug(
+          `[findBySlug] Found tenant, landingConfig enabled: ${(tenant.landingConfig as any)?.enabled}`,
+        );
 
         return tenant;
       },
@@ -195,12 +207,14 @@ export class TenantsService {
   }
 
   // ==========================================
-  // 🔥 UPDATED: UPDATE ME with LandingConfig Validation
+  // 🔥 FIXED: UPDATE ME with Proper LandingConfig Handling
   // ==========================================
   async updateMe(tenantId: string, dto: UpdateTenantDto) {
+    this.logger.log(`[updateMe] Starting update for tenant: ${tenantId}`);
+
     const existing = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { slug: true },
+      select: { slug: true, landingConfig: true },
     });
 
     if (!existing) {
@@ -208,16 +222,69 @@ export class TenantsService {
     }
 
     // ==========================================
-    // 🔥 NEW: Validate landingConfig before save
+    // 🔥 FIX: Build update data object dynamically
+    // Only include fields that are explicitly provided
     // ==========================================
-    let validatedLandingConfig: Prisma.InputJsonValue | undefined = undefined;
+    const updateData: Prisma.TenantUpdateInput = {};
 
+    // Basic info - only set if provided
+    if (dto.name !== undefined) updateData.name = dto.name;
+    if (dto.description !== undefined) updateData.description = dto.description;
+    if (dto.whatsapp !== undefined) updateData.whatsapp = dto.whatsapp;
+    if (dto.phone !== undefined) updateData.phone = dto.phone;
+    if (dto.address !== undefined) updateData.address = dto.address;
+    if (dto.logo !== undefined) updateData.logo = dto.logo;
+    if (dto.banner !== undefined) updateData.banner = dto.banner;
+    if (dto.theme !== undefined)
+      updateData.theme = dto.theme as Prisma.InputJsonValue;
+
+    // SEO
+    if (dto.metaTitle !== undefined) updateData.metaTitle = dto.metaTitle;
+    if (dto.metaDescription !== undefined)
+      updateData.metaDescription = dto.metaDescription;
+    if (dto.socialLinks !== undefined)
+      updateData.socialLinks =
+        dto.socialLinks as unknown as Prisma.InputJsonValue;
+
+    // Payment & Shipping
+    if (dto.currency !== undefined) updateData.currency = dto.currency;
+    if (dto.taxRate !== undefined) updateData.taxRate = dto.taxRate;
+    if (dto.paymentMethods !== undefined)
+      updateData.paymentMethods =
+        dto.paymentMethods as unknown as Prisma.InputJsonValue;
+    if (dto.freeShippingThreshold !== undefined)
+      updateData.freeShippingThreshold = dto.freeShippingThreshold;
+    if (dto.defaultShippingCost !== undefined)
+      updateData.defaultShippingCost = dto.defaultShippingCost;
+    if (dto.shippingMethods !== undefined)
+      updateData.shippingMethods =
+        dto.shippingMethods as unknown as Prisma.InputJsonValue;
+
+    // ==========================================
+    // 🔥 FIX: Handle landingConfig with detailed logging
+    // ==========================================
     if (dto.landingConfig !== undefined) {
+      this.logger.log(`[updateMe] Processing landingConfig...`);
+      this.logger.debug(
+        `[updateMe] Raw landingConfig type: ${typeof dto.landingConfig}`,
+      );
+      this.logger.debug(
+        `[updateMe] Raw landingConfig: ${JSON.stringify(dto.landingConfig, null, 2)}`,
+      );
+
+      // Validate the landing config
       const validationResult = validateAndSanitizeLandingConfig(
         dto.landingConfig,
       );
 
+      this.logger.debug(
+        `[updateMe] Validation result: valid=${validationResult.valid}`,
+      );
+
       if (!validationResult.valid) {
+        this.logger.error(
+          `[updateMe] Validation failed: ${JSON.stringify(validationResult.errors)}`,
+        );
         throw new BadRequestException({
           message: 'Invalid landing page configuration',
           errors: validationResult.errors,
@@ -225,45 +292,35 @@ export class TenantsService {
         });
       }
 
-      validatedLandingConfig =
-        validationResult.data as unknown as Prisma.InputJsonValue;
-
-      // Log warnings for debugging
       if (validationResult.warnings?.length) {
-        console.warn(
-          `[TenantsService] Landing config warnings for tenant ${tenantId}:`,
-          validationResult.warnings,
+        this.logger.warn(
+          `[updateMe] Validation warnings: ${validationResult.warnings.join(', ')}`,
         );
       }
+
+      // 🔥 KEY FIX: Use validated data if available, otherwise use original dto
+      // This ensures we always have data to save
+      const configToSave = validationResult.data ?? dto.landingConfig;
+
+      this.logger.debug(
+        `[updateMe] Config to save: ${JSON.stringify(configToSave, null, 2)}`,
+      );
+
+      updateData.landingConfig =
+        configToSave as unknown as Prisma.InputJsonValue;
     }
+
+    // ==========================================
+    // Perform the update
+    // ==========================================
+    this.logger.log(`[updateMe] Executing Prisma update...`);
+    this.logger.debug(
+      `[updateMe] Update data keys: ${Object.keys(updateData).join(', ')}`,
+    );
 
     const tenant = await this.prisma.tenant.update({
       where: { id: tenantId },
-      data: {
-        // Basic info
-        name: dto.name,
-        description: dto.description,
-        whatsapp: dto.whatsapp,
-        phone: dto.phone,
-        address: dto.address,
-        logo: dto.logo,
-        banner: dto.banner,
-        theme: dto.theme,
-        // 🔥 UPDATED: Use validated config
-        landingConfig: validatedLandingConfig,
-        // SEO
-        metaTitle: dto.metaTitle,
-        metaDescription: dto.metaDescription,
-        socialLinks: dto.socialLinks as unknown as Prisma.InputJsonValue,
-        // Payment & Shipping
-        currency: dto.currency,
-        taxRate: dto.taxRate,
-        paymentMethods: dto.paymentMethods as unknown as Prisma.InputJsonValue,
-        freeShippingThreshold: dto.freeShippingThreshold,
-        defaultShippingCost: dto.defaultShippingCost,
-        shippingMethods:
-          dto.shippingMethods as unknown as Prisma.InputJsonValue,
-      },
+      data: updateData,
       select: {
         id: true,
         slug: true,
@@ -292,11 +349,29 @@ export class TenantsService {
       },
     });
 
-    // 🔥 INVALIDATE CACHE
-    await this.redis.invalidateTenant(tenantId, existing.slug);
+    this.logger.log(`[updateMe] Update successful`);
+    this.logger.debug(
+      `[updateMe] Saved landingConfig enabled: ${(tenant.landingConfig as any)?.enabled}`,
+    );
+
+    // ==========================================
+    // 🔥 FIX: Invalidate ALL related caches
+    // ==========================================
+    this.logger.log(
+      `[updateMe] Invalidating caches for slug: ${existing.slug}`,
+    );
+
+    await Promise.all([
+      this.redis.invalidateTenant(tenantId, existing.slug),
+      // Also explicitly delete the slug cache with lowercase
+      this.redis.del(CACHE_KEYS.TENANT_SLUG(existing.slug.toLowerCase())),
+    ]);
+
+    // Trigger SEO reindex (fire and forget)
     this.seoService.onTenantUpdated(existing.slug).catch((error) => {
-      console.error('[SEO] Failed to reindex tenant:', error.message);
+      this.logger.error(`[SEO] Failed to reindex tenant: ${error.message}`);
     });
+
     return {
       message: 'Profil berhasil diupdate',
       tenant,
@@ -340,7 +415,7 @@ export class TenantsService {
       );
     }
 
-    const hashedPassword = await bcrypt.hash(dto.newPassword, 12); // 🔥 Increased from 10 to 12
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 12);
 
     await this.prisma.tenant.update({
       where: { id: tenantId },

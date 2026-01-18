@@ -2,8 +2,10 @@
 // LANDING CONFIG VALIDATOR
 // server/src/validators/landing-config.validator.ts
 // ==========================================
+// 🚀 UPDATED: Added template & variant support for Landing Page Template System
+// ==========================================
 
-import Ajv, { ErrorObject } from 'ajv'; // ✅ FIX: Removed unused JSONSchemaType
+import Ajv, { ErrorObject } from 'ajv';
 import addFormats from 'ajv-formats';
 
 // ==========================================
@@ -24,6 +26,80 @@ export interface FeatureItem {
   title: string;
   description: string;
 }
+
+// ==========================================
+// 🚀 NEW: Template System Types
+// ==========================================
+
+export type TemplateId =
+  | 'suspended-minimalist'
+  | 'modern-starter'
+  | 'bold-starter'
+  | 'classic-starter'
+  | 'brand-starter'
+  | 'catalog-starter'
+  | 'fresh-starter'
+  | 'elegant-starter'
+  | 'dynamic-starter'
+  | 'professional-starter'
+  | 'custom';
+
+export type HeroVariant =
+  | 'default'
+  | 'gradient-overlay'
+  | 'centered-minimal'
+  | 'split-screen'
+  | 'video-background'
+  | 'parallax'
+  | 'animated-gradient'
+  | 'glass-morphism';
+
+export type AboutVariant =
+  | 'default'
+  | 'side-by-side'
+  | 'centered'
+  | 'timeline'
+  | 'cards'
+  | 'magazine'
+  | 'storytelling';
+
+export type ProductsVariant =
+  | 'default'
+  | 'grid-hover'
+  | 'masonry'
+  | 'carousel'
+  | 'featured-hero'
+  | 'catalog'
+  | 'minimal-list';
+
+export type TestimonialsVariant =
+  | 'default'
+  | 'card-slider'
+  | 'quote-highlight'
+  | 'grid-cards'
+  | 'single-focus'
+  | 'video-testimonials'
+  | 'social-proof';
+
+export type ContactVariant =
+  | 'default'
+  | 'split-form'
+  | 'centered'
+  | 'map-focus'
+  | 'minimal'
+  | 'social-focused';
+
+export type CtaVariant =
+  | 'default'
+  | 'bold-center'
+  | 'gradient-banner'
+  | 'split-action'
+  | 'floating'
+  | 'minimal-line';
+
+// ==========================================
+// CONFIG INTERFACES (Updated with variant)
+// ==========================================
 
 export interface HeroConfig {
   layout?: 'centered' | 'left' | 'right';
@@ -63,23 +139,33 @@ export interface CtaConfig {
   style?: 'primary' | 'secondary' | 'outline';
 }
 
-export interface LandingSection<T = Record<string, unknown>> {
+// ==========================================
+// 🚀 UPDATED: Landing Section with Variant
+// ==========================================
+
+export interface LandingSection<T = Record<string, unknown>, V = string> {
   enabled?: boolean;
   title?: string;
   subtitle?: string;
+  variant?: V; // 🚀 NEW: Variant field
   config?: T;
 }
 
+// ==========================================
+// 🚀 UPDATED: Landing Config with Template
+// ==========================================
+
 export interface LandingConfig {
-  [key: string]: unknown; // ✅ FIX: Add index signature for Prisma compatibility
+  [key: string]: unknown;
   enabled?: boolean;
-  templateId?: string;
-  hero?: LandingSection<HeroConfig>;
-  about?: LandingSection<AboutConfig>;
-  products?: LandingSection<ProductsConfig>;
-  testimonials?: LandingSection<TestimonialsConfig>;
-  contact?: LandingSection<ContactConfig>;
-  cta?: LandingSection<CtaConfig>;
+  template?: TemplateId; // 🚀 NEW: Template ID
+  templateId?: string; // Legacy support
+  hero?: LandingSection<HeroConfig, HeroVariant>;
+  about?: LandingSection<AboutConfig, AboutVariant>;
+  products?: LandingSection<ProductsConfig, ProductsVariant>;
+  testimonials?: LandingSection<TestimonialsConfig, TestimonialsVariant>;
+  contact?: LandingSection<ContactConfig, ContactVariant>;
+  cta?: LandingSection<CtaConfig, CtaVariant>;
 }
 
 export interface ValidationResult {
@@ -104,7 +190,7 @@ const testimonialItemSchema = {
     content: { type: 'string' as const, minLength: 1, maxLength: 1000 },
     rating: { type: 'integer' as const, minimum: 1, maximum: 5 },
   },
-  additionalProperties: false,
+  additionalProperties: true,
 };
 
 const featureItemSchema = {
@@ -115,8 +201,12 @@ const featureItemSchema = {
     title: { type: 'string' as const, minLength: 1, maxLength: 100 },
     description: { type: 'string' as const, minLength: 1, maxLength: 500 },
   },
-  additionalProperties: false,
+  additionalProperties: true,
 };
+
+// ==========================================
+// 🚀 UPDATED: Schema with template & variants
+// ==========================================
 
 const landingConfigSchema = {
   type: 'object' as const,
@@ -124,12 +214,47 @@ const landingConfigSchema = {
     enabled: { type: 'boolean' as const },
     templateId: { type: 'string' as const, maxLength: 50 },
 
+    // 🚀 NEW: Template field
+    template: {
+      type: 'string' as const,
+      maxLength: 50,
+      enum: [
+        'suspended-minimalist',
+        'modern-starter',
+        'bold-starter',
+        'classic-starter',
+        'brand-starter',
+        'catalog-starter',
+        'fresh-starter',
+        'elegant-starter',
+        'dynamic-starter',
+        'professional-starter',
+        'custom',
+      ],
+    },
+
+    // 🚀 UPDATED: Hero with variant
     hero: {
       type: 'object' as const,
       properties: {
         enabled: { type: 'boolean' as const },
         title: { type: 'string' as const, maxLength: 200 },
         subtitle: { type: 'string' as const, maxLength: 500 },
+        // 🚀 NEW: Variant field
+        variant: {
+          type: 'string' as const,
+          maxLength: 50,
+          enum: [
+            'default',
+            'gradient-overlay',
+            'centered-minimal',
+            'split-screen',
+            'video-background',
+            'parallax',
+            'animated-gradient',
+            'glass-morphism',
+          ],
+        },
         config: {
           type: 'object' as const,
           properties: {
@@ -143,18 +268,33 @@ const landingConfigSchema = {
             backgroundImage: { type: 'string' as const, maxLength: 500 },
             overlayOpacity: { type: 'number' as const, minimum: 0, maximum: 1 },
           },
-          additionalProperties: false,
+          additionalProperties: true,
         },
       },
-      additionalProperties: false,
+      additionalProperties: true,
     },
 
+    // 🚀 UPDATED: About with variant
     about: {
       type: 'object' as const,
       properties: {
         enabled: { type: 'boolean' as const },
         title: { type: 'string' as const, maxLength: 200 },
         subtitle: { type: 'string' as const, maxLength: 500 },
+        // 🚀 NEW: Variant field
+        variant: {
+          type: 'string' as const,
+          maxLength: 50,
+          enum: [
+            'default',
+            'side-by-side',
+            'centered',
+            'timeline',
+            'cards',
+            'magazine',
+            'storytelling',
+          ],
+        },
         config: {
           type: 'object' as const,
           properties: {
@@ -167,18 +307,33 @@ const landingConfigSchema = {
               items: featureItemSchema,
             },
           },
-          additionalProperties: false,
+          additionalProperties: true,
         },
       },
-      additionalProperties: false,
+      additionalProperties: true,
     },
 
+    // 🚀 UPDATED: Products with variant
     products: {
       type: 'object' as const,
       properties: {
         enabled: { type: 'boolean' as const },
         title: { type: 'string' as const, maxLength: 200 },
         subtitle: { type: 'string' as const, maxLength: 500 },
+        // 🚀 NEW: Variant field
+        variant: {
+          type: 'string' as const,
+          maxLength: 50,
+          enum: [
+            'default',
+            'grid-hover',
+            'masonry',
+            'carousel',
+            'featured-hero',
+            'catalog',
+            'minimal-list',
+          ],
+        },
         config: {
           type: 'object' as const,
           properties: {
@@ -189,18 +344,33 @@ const landingConfigSchema = {
             limit: { type: 'integer' as const, minimum: 1, maximum: 50 },
             showViewAll: { type: 'boolean' as const },
           },
-          additionalProperties: false,
+          additionalProperties: true,
         },
       },
-      additionalProperties: false,
+      additionalProperties: true,
     },
 
+    // 🚀 UPDATED: Testimonials with variant
     testimonials: {
       type: 'object' as const,
       properties: {
         enabled: { type: 'boolean' as const },
         title: { type: 'string' as const, maxLength: 200 },
         subtitle: { type: 'string' as const, maxLength: 500 },
+        // 🚀 NEW: Variant field
+        variant: {
+          type: 'string' as const,
+          maxLength: 50,
+          enum: [
+            'default',
+            'card-slider',
+            'quote-highlight',
+            'grid-cards',
+            'single-focus',
+            'video-testimonials',
+            'social-proof',
+          ],
+        },
         config: {
           type: 'object' as const,
           properties: {
@@ -210,18 +380,32 @@ const landingConfigSchema = {
               items: testimonialItemSchema,
             },
           },
-          additionalProperties: false,
+          additionalProperties: true,
         },
       },
-      additionalProperties: false,
+      additionalProperties: true,
     },
 
+    // 🚀 UPDATED: Contact with variant
     contact: {
       type: 'object' as const,
       properties: {
         enabled: { type: 'boolean' as const },
         title: { type: 'string' as const, maxLength: 200 },
         subtitle: { type: 'string' as const, maxLength: 500 },
+        // 🚀 NEW: Variant field
+        variant: {
+          type: 'string' as const,
+          maxLength: 50,
+          enum: [
+            'default',
+            'split-form',
+            'centered',
+            'map-focus',
+            'minimal',
+            'social-focused',
+          ],
+        },
         config: {
           type: 'object' as const,
           properties: {
@@ -229,18 +413,32 @@ const landingConfigSchema = {
             showForm: { type: 'boolean' as const },
             showSocialMedia: { type: 'boolean' as const },
           },
-          additionalProperties: false,
+          additionalProperties: true,
         },
       },
-      additionalProperties: false,
+      additionalProperties: true,
     },
 
+    // 🚀 UPDATED: CTA with variant
     cta: {
       type: 'object' as const,
       properties: {
         enabled: { type: 'boolean' as const },
         title: { type: 'string' as const, maxLength: 200 },
         subtitle: { type: 'string' as const, maxLength: 500 },
+        // 🚀 NEW: Variant field
+        variant: {
+          type: 'string' as const,
+          maxLength: 50,
+          enum: [
+            'default',
+            'bold-center',
+            'gradient-banner',
+            'split-action',
+            'floating',
+            'minimal-line',
+          ],
+        },
         config: {
           type: 'object' as const,
           properties: {
@@ -251,13 +449,13 @@ const landingConfigSchema = {
               enum: ['primary', 'secondary', 'outline'],
             },
           },
-          additionalProperties: false,
+          additionalProperties: true,
         },
       },
-      additionalProperties: false,
+      additionalProperties: true,
     },
   },
-  additionalProperties: false,
+  additionalProperties: true,
 };
 
 // ==========================================
@@ -266,7 +464,7 @@ const landingConfigSchema = {
 
 const ajv = new Ajv({
   allErrors: true,
-  removeAdditional: 'all',
+  removeAdditional: false, // 🔥 FIX: Don't strip additional fields (like variant)!
   useDefaults: true,
   coerceTypes: false,
 });
@@ -326,7 +524,7 @@ function ensureTestimonialIds(items: TestimonialItem[]): TestimonialItem[] {
 
 function sanitizeTestimonials(
   config: TestimonialsConfig | undefined,
-  warningsList: string[], // ✅ FIX: Renamed to warningsList to indicate it's used
+  warningsList: string[],
 ): TestimonialsConfig {
   if (!config) return { items: [] };
 
@@ -356,7 +554,7 @@ function sanitizeTestimonials(
 function sanitizeFeatures(
   features: FeatureItem[] | undefined,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _warningsList: string[], // ✅ FIX: Prefix with _ to indicate intentionally unused
+  _warningsList: string[],
 ): FeatureItem[] {
   if (!features) return [];
 
@@ -439,6 +637,7 @@ export function validateAndSanitizeLandingConfig(
     };
   }
 
+  // Trim string fields
   if (config.hero?.title) config.hero.title = config.hero.title.trim();
   if (config.hero?.subtitle) config.hero.subtitle = config.hero.subtitle.trim();
   if (config.about?.title) config.about.title = config.about.title.trim();
@@ -494,16 +693,53 @@ export function getLandingConfigErrors(data: unknown): string[] {
 }
 
 // ==========================================
-// DEFAULT CONFIG GENERATOR
+// 🚀 NEW: Template Helper Functions
+// ==========================================
+
+export function isValidTemplate(template: string): template is TemplateId {
+  const validTemplates: TemplateId[] = [
+    'suspended-minimalist',
+    'modern-starter',
+    'bold-starter',
+    'classic-starter',
+    'brand-starter',
+    'catalog-starter',
+    'fresh-starter',
+    'elegant-starter',
+    'dynamic-starter',
+    'professional-starter',
+    'custom',
+  ];
+  return validTemplates.includes(template as TemplateId);
+}
+
+export function isValidHeroVariant(variant: string): variant is HeroVariant {
+  const validVariants: HeroVariant[] = [
+    'default',
+    'gradient-overlay',
+    'centered-minimal',
+    'split-screen',
+    'video-background',
+    'parallax',
+    'animated-gradient',
+    'glass-morphism',
+  ];
+  return validVariants.includes(variant as HeroVariant);
+}
+
+// ==========================================
+// 🚀 UPDATED: Default Config with Template
 // ==========================================
 
 export function getDefaultLandingConfig(): LandingConfig {
   return {
     enabled: false,
+    template: 'suspended-minimalist', // 🚀 NEW: Default template
     hero: {
       enabled: false,
       title: '',
       subtitle: '',
+      variant: 'default', // 🚀 NEW: Default variant
       config: {
         layout: 'centered',
         showCta: false,
@@ -515,6 +751,7 @@ export function getDefaultLandingConfig(): LandingConfig {
       enabled: false,
       title: 'Tentang Kami',
       subtitle: '',
+      variant: 'default', // 🚀 NEW: Default variant
       config: {
         showImage: false,
         features: [],
@@ -524,6 +761,7 @@ export function getDefaultLandingConfig(): LandingConfig {
       enabled: false,
       title: 'Produk Kami',
       subtitle: 'Pilihan produk terbaik untuk Anda',
+      variant: 'default', // 🚀 NEW: Default variant
       config: {
         displayMode: 'featured',
         limit: 8,
@@ -534,6 +772,7 @@ export function getDefaultLandingConfig(): LandingConfig {
       enabled: false,
       title: 'Testimoni',
       subtitle: 'Apa kata pelanggan kami',
+      variant: 'default', // 🚀 NEW: Default variant
       config: {
         items: [],
       },
@@ -542,6 +781,7 @@ export function getDefaultLandingConfig(): LandingConfig {
       enabled: false,
       title: 'Hubungi Kami',
       subtitle: '',
+      variant: 'default', // 🚀 NEW: Default variant
       config: {
         showMap: false,
         showForm: false,
@@ -552,6 +792,7 @@ export function getDefaultLandingConfig(): LandingConfig {
       enabled: false,
       title: 'Siap Berbelanja?',
       subtitle: '',
+      variant: 'default', // 🚀 NEW: Default variant
       config: {
         buttonText: 'Mulai Belanja',
         style: 'primary',
@@ -559,3 +800,78 @@ export function getDefaultLandingConfig(): LandingConfig {
     },
   };
 }
+
+// ==========================================
+// 🚀 NEW: Available Templates & Variants Export
+// For Frontend to consume
+// ==========================================
+
+export const AVAILABLE_TEMPLATES: TemplateId[] = [
+  'suspended-minimalist',
+  'modern-starter',
+  'bold-starter',
+  'classic-starter',
+  'brand-starter',
+  'catalog-starter',
+  'fresh-starter',
+  'elegant-starter',
+  'dynamic-starter',
+  'professional-starter',
+  'custom',
+];
+
+export const AVAILABLE_VARIANTS = {
+  hero: [
+    'default',
+    'gradient-overlay',
+    'centered-minimal',
+    'split-screen',
+    'video-background',
+    'parallax',
+    'animated-gradient',
+    'glass-morphism',
+  ] as HeroVariant[],
+  about: [
+    'default',
+    'side-by-side',
+    'centered',
+    'timeline',
+    'cards',
+    'magazine',
+    'storytelling',
+  ] as AboutVariant[],
+  products: [
+    'default',
+    'grid-hover',
+    'masonry',
+    'carousel',
+    'featured-hero',
+    'catalog',
+    'minimal-list',
+  ] as ProductsVariant[],
+  testimonials: [
+    'default',
+    'card-slider',
+    'quote-highlight',
+    'grid-cards',
+    'single-focus',
+    'video-testimonials',
+    'social-proof',
+  ] as TestimonialsVariant[],
+  contact: [
+    'default',
+    'split-form',
+    'centered',
+    'map-focus',
+    'minimal',
+    'social-focused',
+  ] as ContactVariant[],
+  cta: [
+    'default',
+    'bold-center',
+    'gradient-banner',
+    'split-action',
+    'floating',
+    'minimal-line',
+  ] as CtaVariant[],
+};
