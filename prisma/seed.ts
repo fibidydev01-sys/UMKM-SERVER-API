@@ -12,9 +12,9 @@ const prisma = new PrismaClient();
 // UNSPLASH IMAGE URLS - HIGH QUALITY & FREE
 // ==========================================
 const IMAGES = {
-  // Logo & Banner
+  // Logo & Hero Background
   logo: 'https://images.unsplash.com/photo-1550547660-d9450f859349?w=200&h=200&fit=crop&q=80',
-  banner:
+  heroBackground:
     'https://images.unsplash.com/photo-1561758033-d89a9ad46330?w=1200&h=400&fit=crop&q=80',
 
   // Burger Products
@@ -109,7 +109,6 @@ async function main() {
       phone: '081234567890',
       address: 'Jl. Asia Raya No. 88, Jakarta Pusat',
       logo: IMAGES.logo,
-      banner: IMAGES.banner,
       password: hashedPassword,
       status: TenantStatus.ACTIVE,
 
@@ -128,163 +127,145 @@ async function main() {
         tiktok: 'https://tiktok.com/@burgerchina',
       },
 
-      // Landing Page Config
-      landingConfig: {
-        enabled: true,
+      // ==========================================
+      // STORE INFORMATION - PERMANENT DATA
+      // Stored in tenant fields (not landingConfig)
+      // ==========================================
 
-        // Hero Section
+      // Hero Data
+      heroTitle: 'Burger Premium dengan Cita Rasa Asia Fusion',
+      heroSubtitle:
+        'Rasakan sensasi burger berkualitas dengan bumbu rahasia khas Asia. Dibuat fresh setiap hari dengan bahan-bahan pilihan.',
+      heroCtaText: 'Pesan Sekarang',
+      heroCtaLink: '/products',
+      heroBackgroundImage: IMAGES.heroBackground,
+
+      // About Data
+      aboutTitle: 'Kenapa Burger China?',
+      aboutSubtitle:
+        'Kami percaya bahwa burger bukan sekadar makanan cepat saji',
+      aboutContent:
+        'Didirikan sejak 2019, Burger China hadir dengan konsep unik: memadukan kelezatan burger Amerika dengan sentuhan bumbu Asia. Setiap burger dibuat dengan daging sapi pilihan, roti homemade yang dipanggang sempurna, dan saus rahasia yang bikin ketagihan.\n\nKami menggunakan 100% daging segar tanpa pengawet, sayuran organik dari petani lokal, dan keju premium impor. Semua demi satu tujuan: memberikan pengalaman burger terbaik untuk Anda.',
+      aboutImage: IMAGES.logo,
+      aboutFeatures: [
+        {
+          icon: 'beef',
+          title: 'Daging Premium',
+          description: '100% daging sapi pilihan tanpa campuran',
+        },
+        {
+          icon: 'leaf',
+          title: 'Bahan Segar',
+          description: 'Sayuran organik dari petani lokal',
+        },
+        {
+          icon: 'flame',
+          title: 'Fresh Grilled',
+          description: 'Dipanggang fresh saat order',
+        },
+        {
+          icon: 'award',
+          title: 'Resep Rahasia',
+          description: 'Bumbu Asia fusion yang unik',
+        },
+      ],
+
+      // Testimonials Data
+      testimonialsTitle: 'Kata Mereka',
+      testimonialsSubtitle: 'Apa kata pelanggan tentang Burger China',
+      testimonials: [
+        {
+          id: 't1',
+          name: 'Budi Santoso',
+          role: 'Food Blogger',
+          content:
+            'Ini burger terenak yang pernah saya coba di Jakarta! Pattynya juicy, sausnya unik banget. Wajib coba Double Dragon Burger!',
+          rating: 5,
+          avatar:
+            'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&q=80',
+        },
+        {
+          id: 't2',
+          name: 'Siti Rahayu',
+          role: 'Office Worker',
+          content:
+            'Langganan order buat makan siang kantor. Delivery cepat, burger masih hangat, dan harganya worth it banget!',
+          rating: 5,
+          avatar:
+            'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop&q=80',
+        },
+        {
+          id: 't3',
+          name: 'Ahmad Rizki',
+          role: 'Mahasiswa',
+          content:
+            'Porsinya gede, rasanya mantap, harga mahasiswa friendly. Spicy Dragon jadi favorit saya!',
+          rating: 5,
+          avatar:
+            'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&q=80',
+        },
+        {
+          id: 't4',
+          name: 'Linda Chen',
+          role: 'Ibu Rumah Tangga',
+          content:
+            'Anak-anak suka banget sama Chicken Teriyaki Burger-nya. Nggak terlalu pedas, cocok untuk keluarga.',
+          rating: 5,
+          avatar:
+            'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&q=80',
+        },
+      ],
+
+      // Contact Data
+      contactTitle: 'Hubungi Kami',
+      contactSubtitle:
+        'Ada pertanyaan atau mau order dalam jumlah besar? Hubungi kami!',
+      contactMapUrl: '',
+      contactShowMap: false,
+      contactShowForm: false,
+
+      // CTA Data
+      ctaTitle: 'Lapar? Pesan Sekarang!',
+      ctaSubtitle:
+        'Free delivery untuk area Jakarta Pusat. Minimal order Rp 50.000',
+      ctaButtonText: 'Order via WhatsApp',
+      ctaButtonLink: 'https://wa.me/6281234567890',
+      ctaButtonStyle: 'primary',
+
+      // ==========================================
+      // LANDING CONFIG - BLOCK SELECTION ONLY
+      // Data is stored in tenant fields above
+      // ==========================================
+      landingConfig: {
+        template: 'modern-starter',
         hero: {
           enabled: true,
-          config: {
-            layout: 'image-right',
-            title: 'Burger Premium dengan Cita Rasa Asia Fusion',
-            subtitle:
-              'Rasakan sensasi burger berkualitas dengan bumbu rahasia khas Asia. Dibuat fresh setiap hari dengan bahan-bahan pilihan.',
-            ctaText: 'Pesan Sekarang',
-            ctaLink: '/store/burgerchina/products',
-            secondaryCtaText: 'Lihat Menu',
-            secondaryCtaLink: '#products',
-            showStats: true,
-            stats: [
-              { value: '10K+', label: 'Pelanggan Puas' },
-              { value: '50+', label: 'Menu Tersedia' },
-              { value: '4.9', label: 'Rating Google' },
-            ],
-          },
+          block: 'hero1',
         },
-
-        // About Section
         about: {
           enabled: true,
-          config: {
-            layout: 'image-left',
-            title: 'Kenapa Burger China?',
-            subtitle:
-              'Kami percaya bahwa burger bukan sekadar makanan cepat saji',
-            content:
-              'Didirikan sejak 2019, Burger China hadir dengan konsep unik: memadukan kelezatan burger Amerika dengan sentuhan bumbu Asia. Setiap burger dibuat dengan daging sapi pilihan, roti homemade yang dipanggang sempurna, dan saus rahasia yang bikin ketagihan.\n\nKami menggunakan 100% daging segar tanpa pengawet, sayuran organik dari petani lokal, dan keju premium impor. Semua demi satu tujuan: memberikan pengalaman burger terbaik untuk Anda.',
-            showImage: true,
-            features: [
-              {
-                icon: 'beef',
-                title: 'Daging Premium',
-                description: '100% daging sapi pilihan tanpa campuran',
-              },
-              {
-                icon: 'leaf',
-                title: 'Bahan Segar',
-                description: 'Sayuran organik dari petani lokal',
-              },
-              {
-                icon: 'flame',
-                title: 'Fresh Grilled',
-                description: 'Dipanggang fresh saat order',
-              },
-              {
-                icon: 'award',
-                title: 'Resep Rahasia',
-                description: 'Bumbu Asia fusion yang unik',
-              },
-            ],
-          },
+          block: 'about1',
         },
-
-        // Products Section
         products: {
           enabled: true,
+          block: 'products1',
           config: {
-            layout: 'grid',
-            title: 'Menu Favorit',
-            subtitle:
-              'Pilihan burger dan menu lainnya yang paling digemari pelanggan kami',
-            showFeaturedOnly: true,
+            displayMode: 'featured',
             limit: 8,
-            columns: 4,
+            showViewAll: true,
           },
         },
-
-        // Testimonials Section
         testimonials: {
           enabled: true,
-          config: {
-            layout: 'carousel',
-            title: 'Kata Mereka',
-            subtitle: 'Apa kata pelanggan tentang Burger China',
-            items: [
-              {
-                name: 'Budi Santoso',
-                role: 'Food Blogger',
-                content:
-                  'Ini burger terenak yang pernah saya coba di Jakarta! Pattynya juicy, sausnya unik banget. Wajib coba Double Dragon Burger!',
-                rating: 5,
-                avatar:
-                  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&q=80',
-              },
-              {
-                name: 'Siti Rahayu',
-                role: 'Office Worker',
-                content:
-                  'Langganan order buat makan siang kantor. Delivery cepat, burger masih hangat, dan harganya worth it banget!',
-                rating: 5,
-                avatar:
-                  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop&q=80',
-              },
-              {
-                name: 'Ahmad Rizki',
-                role: 'Mahasiswa',
-                content:
-                  'Porsinya gede, rasanya mantap, harga mahasiswa friendly. Spicy Dragon jadi favorit saya!',
-                rating: 5,
-                avatar:
-                  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&q=80',
-              },
-              {
-                name: 'Linda Chen',
-                role: 'Ibu Rumah Tangga',
-                content:
-                  'Anak-anak suka banget sama Chicken Teriyaki Burger-nya. Nggak terlalu pedas, cocok untuk keluarga.',
-                rating: 5,
-                avatar:
-                  'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&q=80',
-              },
-            ],
-          },
+          block: 'testimonials1',
         },
-
-        // CTA Section
-        cta: {
-          enabled: true,
-          config: {
-            layout: 'centered',
-            title: 'Lapar? Pesan Sekarang!',
-            subtitle:
-              'Free delivery untuk area Jakarta Pusat. Minimal order Rp 50.000',
-            ctaText: 'Order via WhatsApp',
-            ctaLink: 'https://wa.me/6281234567890',
-            showSecondaryAction: true,
-            secondaryText: 'Lihat Semua Menu',
-            secondaryLink: '/store/burgerchina/products',
-            backgroundColor: 'primary',
-          },
-        },
-
-        // Contact Section
         contact: {
           enabled: true,
-          config: {
-            layout: 'split',
-            title: 'Hubungi Kami',
-            subtitle:
-              'Ada pertanyaan atau mau order dalam jumlah besar? Hubungi kami!',
-            showMap: false,
-            showForm: false,
-            showWhatsApp: true,
-            showSocialLinks: true,
-            operationalHours: [
-              { day: 'Senin - Jumat', hours: '10:00 - 22:00' },
-              { day: 'Sabtu - Minggu', hours: '09:00 - 23:00' },
-            ],
-          },
+          block: 'contact1',
+        },
+        cta: {
+          enabled: true,
+          block: 'cta1',
         },
       },
     },

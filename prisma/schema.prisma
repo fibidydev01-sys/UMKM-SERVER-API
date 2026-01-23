@@ -50,7 +50,6 @@ model Tenant {
   phone         String?
   address       String?
   logo          String?
-  banner        String?
   theme         Json?
   landingConfig Json?
   
@@ -75,6 +74,49 @@ model Tenant {
   defaultShippingCost    Float     @default(0) // Default shipping cost
   shippingMethods        Json?                 // See ShippingMethods type below
   
+  // ==========================================
+  // STORE INFORMATION - HERO SECTION
+  // ==========================================
+  heroTitle           String?   @db.VarChar(200)
+  heroSubtitle        String?   @db.VarChar(300)
+  heroCtaText         String?   @db.VarChar(50)
+  heroCtaLink         String?   @db.VarChar(500)
+  heroBackgroundImage String?
+
+  // ==========================================
+  // STORE INFORMATION - ABOUT SECTION
+  // ==========================================
+  aboutTitle          String?   @db.VarChar(200)
+  aboutSubtitle       String?   @db.VarChar(300)
+  aboutContent        String?   @db.Text
+  aboutImage          String?
+  aboutFeatures       Json?     // [{ icon, title, description }]
+
+  // ==========================================
+  // STORE INFORMATION - TESTIMONIALS SECTION
+  // ==========================================
+  testimonialsTitle    String?   @db.VarChar(200)
+  testimonialsSubtitle String?   @db.VarChar(300)
+  testimonials         Json?     // [{ id, name, role, content, rating, avatar }]
+
+  // ==========================================
+  // STORE INFORMATION - CONTACT SECTION
+  // ==========================================
+  contactTitle         String?   @db.VarChar(200)
+  contactSubtitle      String?   @db.VarChar(300)
+  contactMapUrl        String?
+  contactShowMap       Boolean   @default(false)
+  contactShowForm      Boolean   @default(true)
+
+  // ==========================================
+  // STORE INFORMATION - CTA SECTION
+  // ==========================================
+  ctaTitle             String?   @db.VarChar(200)
+  ctaSubtitle          String?   @db.VarChar(300)
+  ctaButtonText        String?   @db.VarChar(50)
+  ctaButtonLink        String?   @db.VarChar(500)
+  ctaButtonStyle       String?   @db.VarChar(20) @default("primary")
+
   password      String
   status        TenantStatus @default(ACTIVE)
   createdAt     DateTime     @default(now())

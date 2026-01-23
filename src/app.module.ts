@@ -13,6 +13,7 @@ import { CustomersModule } from './customers/customers.module';
 import { OrdersModule } from './orders/orders.module';
 import { SitemapModule } from './sitemap/sitemap.module';
 import { SeoModule } from './seo/seo.module';
+import { CategoriesModule } from './categories/categories.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { SeoModule } from './seo/seo.module';
     OrdersModule,
     SitemapModule,
     SeoModule,
+    CategoriesModule,
   ],
   controllers: [AppController],
   providers: [

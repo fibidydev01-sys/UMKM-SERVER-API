@@ -377,6 +377,10 @@ class HeroSectionDto {
   subtitle?: string;
 
   @IsOptional()
+  @IsString()
+  block?: string;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => HeroSectionConfigDto)
   config?: HeroSectionConfigDto;
@@ -396,6 +400,10 @@ class AboutSectionDto {
   subtitle?: string;
 
   @IsOptional()
+  @IsString()
+  block?: string;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => AboutSectionConfigDto)
   config?: AboutSectionConfigDto;
@@ -413,6 +421,10 @@ class ProductsSectionDto {
   @IsOptional()
   @IsString()
   subtitle?: string;
+
+  @IsOptional()
+  @IsString()
+  block?: string;
 
   @IsOptional()
   @ValidateNested()
@@ -435,6 +447,10 @@ class TestimonialsSectionDto {
   subtitle?: string;
 
   @IsOptional()
+  @IsString()
+  block?: string;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => TestimonialsSectionConfigDto)
   config?: TestimonialsSectionConfigDto;
@@ -452,6 +468,10 @@ class ContactSectionDto {
   @IsOptional()
   @IsString()
   subtitle?: string;
+
+  @IsOptional()
+  @IsString()
+  block?: string;
 
   @IsOptional()
   @ValidateNested()
@@ -473,6 +493,10 @@ class CtaSectionDto {
   subtitle?: string;
 
   @IsOptional()
+  @IsString()
+  block?: string;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => CtaSectionConfigDto)
   config?: CtaSectionConfigDto;
@@ -486,6 +510,19 @@ class LandingConfigDto {
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  template?: string;
+
+  // 🚀 NEW: Section order for drag & drop
+  @IsOptional()
+  @IsArray()
+  @IsIn(['hero', 'about', 'products', 'testimonials', 'contact', 'cta'], {
+    each: true,
+    message: 'Section order harus berisi section yang valid',
+  })
+  sectionOrder?: string[];
 
   @IsOptional()
   @ValidateNested()
@@ -558,10 +595,6 @@ export class UpdateTenantDto {
   @IsOptional()
   @IsString()
   logo?: string;
-
-  @IsOptional()
-  @IsString()
-  banner?: string;
 
   @IsOptional()
   @IsObject()
@@ -638,4 +671,137 @@ export class UpdateTenantDto {
   @ValidateNested()
   @Type(() => ShippingMethodsDto)
   shippingMethods?: ShippingMethodsDto;
+
+  // ==========================================
+  // STORE INFORMATION - HERO SECTION
+  // ==========================================
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200, { message: 'Hero title maksimal 200 karakter' })
+  heroTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300, { message: 'Hero subtitle maksimal 300 karakter' })
+  heroSubtitle?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50, { message: 'Hero CTA text maksimal 50 karakter' })
+  heroCtaText?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500, { message: 'Hero CTA link maksimal 500 karakter' })
+  heroCtaLink?: string;
+
+  @IsOptional()
+  @IsString()
+  heroBackgroundImage?: string;
+
+  // ==========================================
+  // STORE INFORMATION - ABOUT SECTION
+  // ==========================================
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200, { message: 'About title maksimal 200 karakter' })
+  aboutTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300, { message: 'About subtitle maksimal 300 karakter' })
+  aboutSubtitle?: string;
+
+  @IsOptional()
+  @IsString()
+  aboutContent?: string;
+
+  @IsOptional()
+  @IsString()
+  aboutImage?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FeatureItemDto)
+  aboutFeatures?: FeatureItemDto[];
+
+  // ==========================================
+  // STORE INFORMATION - TESTIMONIALS SECTION
+  // ==========================================
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200, { message: 'Testimonials title maksimal 200 karakter' })
+  testimonialsTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300, { message: 'Testimonials subtitle maksimal 300 karakter' })
+  testimonialsSubtitle?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TestimonialItemDto)
+  testimonials?: TestimonialItemDto[];
+
+  // ==========================================
+  // STORE INFORMATION - CONTACT SECTION
+  // ==========================================
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200, { message: 'Contact title maksimal 200 karakter' })
+  contactTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300, { message: 'Contact subtitle maksimal 300 karakter' })
+  contactSubtitle?: string;
+
+  @IsOptional()
+  @IsString()
+  contactMapUrl?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  contactShowMap?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  contactShowForm?: boolean;
+
+  // ==========================================
+  // STORE INFORMATION - CTA SECTION
+  // ==========================================
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200, { message: 'CTA title maksimal 200 karakter' })
+  ctaTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300, { message: 'CTA subtitle maksimal 300 karakter' })
+  ctaSubtitle?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50, { message: 'CTA button text maksimal 50 karakter' })
+  ctaButtonText?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500, { message: 'CTA button link maksimal 500 karakter' })
+  ctaButtonLink?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['primary', 'secondary', 'outline'], {
+    message: 'CTA button style harus primary, secondary, atau outline',
+  })
+  ctaButtonStyle?: string;
 }

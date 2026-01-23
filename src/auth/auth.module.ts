@@ -6,7 +6,8 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { TenantsModule } from '../tenants/tenants.module';
-import { SeoModule } from '../seo/seo.module'; // ✅ TAMBAH INI
+import { SeoModule } from '../seo/seo.module';
+import { CategoriesModule } from '../categories/categories.module'; // ✅ For cache invalidation
 
 @Module({
   imports: [
@@ -31,7 +32,8 @@ import { SeoModule } from '../seo/seo.module'; // ✅ TAMBAH INI
       inject: [ConfigService],
     }),
     TenantsModule,
-    SeoModule, // ✅ TAMBAH INI
+    SeoModule,
+    CategoriesModule, // ✅ Import for cache invalidation on registration
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

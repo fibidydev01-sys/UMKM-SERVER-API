@@ -27,7 +27,7 @@ export class SeoController {
   // ==========================================
 
   @Get('status')
-  async getStatus() {
+  getStatus() {
     return this.seoService.getStatus();
   }
 
@@ -37,7 +37,7 @@ export class SeoController {
   // ==========================================
 
   @Get('stats')
-  async getStats() {
+  getStats() {
     return this.seoService.getDetailedStats();
   }
 

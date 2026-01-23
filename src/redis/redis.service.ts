@@ -6,11 +6,13 @@ import { Redis } from '@upstash/redis';
 // ==========================================
 export const CACHE_TTL = {
   // Short-lived (frequently changing)
+  SHORT: 60, // 1 minute - for autocomplete, search results
   DASHBOARD_STATS: 60, // 1 minute
   RECENT_ORDERS: 30, // 30 seconds
   LOW_STOCK: 120, // 2 minutes
 
   // Medium-lived
+  MEDIUM: 300, // 5 minutes - for category lists & stats
   PRODUCT_LIST: 300, // 5 minutes
   PRODUCT_DETAIL: 600, // 10 minutes
   CUSTOMER_LIST: 300, // 5 minutes
@@ -54,6 +56,12 @@ export const CACHE_KEYS = {
   SITEMAP_TENANTS: (page: number) => `sitemap:tenants:${page}`,
   SITEMAP_PRODUCTS: (page: number) => `sitemap:products:${page}`,
   SITEMAP_STATS: () => `sitemap:stats`,
+
+  // Categories (NEW - for unified category system)
+  CATEGORIES_ALL: 'categories:all', // All unique categories
+  CATEGORIES_STATS: 'categories:stats', // Category statistics with counts
+  CATEGORIES_SEARCH: (query: string) => `categories:search:${query}`, // Search results
+  CATEGORY_EXISTS: (category: string) => `categories:exists:${category}`, // Category existence check
 } as const;
 
 @Injectable()
