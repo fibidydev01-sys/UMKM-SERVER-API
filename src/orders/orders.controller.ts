@@ -44,6 +44,11 @@ export class OrdersController {
     return this.ordersService.findAll(tenantId, query);
   }
 
+  @Get('sample/preview')
+  async getSampleForPreview(@CurrentTenant('id') tenantId: string) {
+    return this.ordersService.getSampleOrderForPreview(tenantId);
+  }
+
   @Get(':id')
   async findOne(
     @CurrentTenant('id') tenantId: string,

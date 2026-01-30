@@ -9,11 +9,7 @@ import { PipeTransform, Injectable, ArgumentMetadata } from '@nestjs/common';
 @Injectable()
 export class SanitizePipe implements PipeTransform {
   transform(value: unknown, metadata: ArgumentMetadata): unknown {
-    // Only sanitize body parameters
-    if (metadata.type !== 'body') {
-      return value;
-    }
-
+    // Sanitize ALL input types (body, query, param, custom)
     return this.sanitizeValue(value);
   }
 

@@ -234,6 +234,63 @@ export class CustomersService {
   }
 
   // ==========================================
+  // FIND OR CREATE CUSTOMER (for auto-create from checkout)
+  // ==========================================
+  async findOrCreateCustomer(
+    tenantId: string,
+    data: {
+      phone: string;
+      name: string;
+      email?: string;
+      address?: string;
+    },
+  ) {
+    // Normalize phone number
+    const phone = this.normalizePhone(data.phone);
+
+    // Try to find existing customer by phone
+    let customer = await this.prisma.customer.findUnique({
+      where: {
+        tenantId_phone: { tenantId, phone },
+      },
+    });
+
+    if (customer) {
+      // Customer exists - check if data needs update
+      const needsUpdate =
+        customer.name !== data.name ||
+        customer.address !== data.address ||
+        (data.email && customer.email !== data.email);
+
+      if (needsUpdate) {
+        // Update customer with latest data from checkout
+        customer = await this.prisma.customer.update({
+          where: { id: customer.id },
+          data: {
+            name: data.name,
+            address: data.address,
+            email: data.email || customer.email,
+          },
+        });
+      }
+    } else {
+      // Customer doesn't exist - create new
+      customer = await this.prisma.customer.create({
+        data: {
+          tenantId,
+          phone,
+          name: data.name,
+          email: data.email,
+          address: data.address,
+          metadata: {},
+        },
+      });
+    }
+
+    return customer;
+  }
+
+  // ==========================================
   // HELPER: Normalize phone number
   // ==========================================
   private normalizePhone(phone: string): string {

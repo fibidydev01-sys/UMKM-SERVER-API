@@ -35,6 +35,10 @@ pnpm-debug.log*
 server/prisma/*.db
 server/prisma/*.db-journal
 
+# WhatsApp Sessions (contains sensitive credentials)
+whatsapp-sessions/
+**/whatsapp-sessions/
+
 # Misc
 *.tsbuildinfo
 /generated/prisma

@@ -3,14 +3,18 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService, CACHE_KEYS } from '../redis/redis.service';
+import { CustomersService } from '../customers/customers.service';
+import { AutoReplyService } from '../auto-reply/auto-reply.service';
 import {
   CreateOrderDto,
   UpdateOrderDto,
   UpdateOrderStatusDto,
   UpdatePaymentStatusDto,
   QueryOrderDto,
+  CheckoutDto,
 } from './dto';
 import { Prisma, OrderStatus, PaymentStatus } from '@prisma/client';
 
@@ -19,6 +23,9 @@ export class OrdersService {
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
+    private customersService: CustomersService,
+    private autoReply: AutoReplyService,
+    private config: ConfigService,
   ) {}
 
   // ==========================================
@@ -329,17 +336,55 @@ export class OrdersService {
     const order = await this.prisma.order.update({
       where: { id: orderId },
       data: updateData,
-      select: {
-        id: true,
-        orderNumber: true,
-        status: true,
-        completedAt: true,
+      include: {
+        customer: {
+          select: {
+            name: true,
+            phone: true,
+          },
+        },
       },
     });
 
     // 🔥 Invalidate stats and low stock cache
     await this.redis.invalidateStats(tenantId);
     await this.redis.del(CACHE_KEYS.PRODUCT_LOW_STOCK(tenantId));
+
+    // ✅ Trigger auto-reply notification for order status change
+    const phone = order.customer?.phone || order.customerPhone;
+
+    if (phone) {
+      // Get tenant slug for tracking link
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { slug: true },
+      });
+
+      if (tenant) {
+        const trackingLink = `${this.config.get('FRONTEND_URL')}/store/${tenant.slug}/track/${order.id}`;
+
+        // Skip PENDING (will be handled by WELCOME auto-reply when integrated)
+        if (dto.status !== 'PENDING') {
+          await this.autoReply
+            .triggerOrderStatusNotification(
+              tenantId,
+              phone,
+              'ORDER_STATUS',
+              dto.status,
+              {
+                name: order.customer?.name || order.customerName || 'Customer',
+                orderNumber: order.orderNumber,
+                total: order.total,
+                trackingLink,
+              },
+            )
+            .catch((error) => {
+              // Don't block order update if notification fails
+              console.error('Failed to send order status notification:', error);
+            });
+        }
+      }
+    }
 
     return { message: `Status order diubah ke ${dto.status}`, order };
   }
@@ -366,17 +411,51 @@ export class OrdersService {
         paymentStatus: dto.paymentStatus,
         paidAmount: dto.paidAmount ?? existing.paidAmount,
       },
-      select: {
-        id: true,
-        orderNumber: true,
-        total: true,
-        paymentStatus: true,
-        paidAmount: true,
+      include: {
+        customer: {
+          select: {
+            name: true,
+            phone: true,
+          },
+        },
       },
     });
 
     // 🔥 Invalidate stats
     await this.redis.invalidateStats(tenantId);
+
+    // ✅ Trigger auto-reply notification for payment status change
+    const phone = order.customer?.phone || order.customerPhone;
+
+    if (phone) {
+      // Get tenant slug for tracking link
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { slug: true },
+      });
+
+      if (tenant) {
+        const trackingLink = `${this.config.get('FRONTEND_URL')}/store/${tenant.slug}/track/${order.id}`;
+
+        await this.autoReply
+          .triggerOrderStatusNotification(
+            tenantId,
+            phone,
+            'PAYMENT_STATUS',
+            dto.paymentStatus,
+            {
+              name: order.customer?.name || order.customerName || 'Customer',
+              orderNumber: order.orderNumber,
+              total: order.total,
+              trackingLink,
+            },
+          )
+          .catch((error) => {
+            // Don't block order update if notification fails
+            console.error('Failed to send payment status notification:', error);
+          });
+      }
+    }
 
     return {
       message: `Status pembayaran diubah ke ${dto.paymentStatus}`,
@@ -488,5 +567,149 @@ export class OrdersService {
 
     const sequence = String(count + 1).padStart(3, '0');
     return `ORD-${dateStr}-${sequence}`;
+  }
+
+  // ==========================================
+  // CREATE ORDER FROM CHECKOUT (PUBLIC)
+  // ==========================================
+  async createFromCheckout(tenantId: string, tenantSlug: string, dto: CheckoutDto) {
+    // 1. Find or create customer by phone
+    const customer = await this.customersService.findOrCreateCustomer(
+      tenantId,
+      {
+        phone: dto.phone,
+        name: dto.name,
+        email: dto.email,
+        address: dto.address,
+      },
+    );
+
+    // 2. Prepare metadata for order
+    const metadata = {
+      courier: dto.courier,
+      shippingAddress: dto.address,
+    };
+
+    // 3. Create order using existing create() method
+    const result = await this.create(tenantId, {
+      customerId: customer.id,
+      items: dto.items,
+      paymentMethod: dto.paymentMethod,
+      notes: dto.notes,
+      metadata,
+    });
+
+    // 4. Generate tracking URL with tenant slug
+    const trackingUrl = `/store/${tenantSlug}/track/${result.order.id}`;
+
+    return {
+      message: 'Pesanan berhasil dibuat',
+      order: result.order,
+      customer: {
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+      },
+      trackingUrl,
+    };
+  }
+
+  // ==========================================
+  // FIND ONE ORDER (PUBLIC - for tracking)
+  // ==========================================
+  async findOnePublic(orderId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                images: true,
+              },
+            },
+          },
+        },
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+          },
+        },
+        tenant: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            whatsapp: true,
+            logo: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Pesanan tidak ditemukan');
+    }
+
+    return order;
+  }
+
+  // ==========================================
+  // GET SAMPLE ORDER FOR PREVIEW
+  // ==========================================
+  async getSampleOrderForPreview(tenantId: string) {
+    // Get most recent order for this tenant
+    const order = await this.prisma.order.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+          },
+        },
+        tenant: {
+          select: {
+            slug: true,
+          },
+        },
+      },
+    });
+
+    // If no orders exist, return dummy data as fallback
+    if (!order) {
+      return {
+        name: 'Budi Santoso',
+        phone: '+628123456789',
+        orderNumber: 'ORD-20260130-001',
+        total: 'Rp 150.000',
+        trackingLink: 'https://tokosaya.com/store/toko-saya/track/550e8400-e29b-41d4-a716-446655440000',
+      };
+    }
+
+    // Format tracking link with tenant slug and order UUID
+    const FRONTEND_URL = this.config.get('FRONTEND_URL') || 'http://localhost:3000';
+    const trackingLink = `${FRONTEND_URL}/store/${order.tenant.slug}/track/${order.id}`;
+
+    // Format price
+    const formattedTotal = new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0,
+    }).format(order.total);
+
+    return {
+      name: order.customer?.name || order.customerName || 'Customer',
+      phone: order.customer?.phone || order.customerPhone || '+62',
+      orderNumber: order.orderNumber,
+      total: formattedTotal,
+      trackingLink,
+    };
   }
 }

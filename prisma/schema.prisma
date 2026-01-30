@@ -126,6 +126,12 @@ model Tenant {
   customers     Customer[]
   orders        Order[]
 
+  // WhatsApp Chat System Relations
+  whatsappSession  WhatsAppSession?
+  conversations    Conversation[]
+  contacts         Contact[]
+  autoReplyRules   AutoReplyRule[]
+
   @@index([slug])
   @@index([category])
   @@index([status])
@@ -303,4 +309,305 @@ model OrderItem {
   
   @@index([orderId])
   @@index([productId])
+}
+
+// ==========================================
+// WHATSAPP CHAT SYSTEM
+// ==========================================
+
+enum WhatsAppSessionStatus {
+  QR_PENDING
+  CONNECTING
+  CONNECTED
+  DISCONNECTED
+}
+
+enum ConversationStatus {
+  ACTIVE
+  RESOLVED
+  CLOSED
+}
+
+enum MessageSenderType {
+  CUSTOMER
+  OWNER
+  AUTO_REPLY
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  DOCUMENT
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum AutoReplyTriggerType {
+  WELCOME
+  KEYWORD
+  TIME_BASED
+  ORDER_STATUS
+  PAYMENT_STATUS
+}
+
+enum KeywordMatchType {
+  EXACT
+  CONTAINS
+  STARTS_WITH
+}
+
+// ==========================================
+// WHATSAPP SESSION
+// ==========================================
+
+model WhatsAppSession {
+  id                   String                @id @default(cuid())
+
+  // Foreign Keys
+  tenantId             String                @unique
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // WhatsApp Connection
+  phoneNumber          String                @unique
+  qrCode               String?               @db.Text
+
+  // Status
+  status               WhatsAppSessionStatus @default(DISCONNECTED)
+  connectionState      Json?
+
+  // Session Data
+  authStatePath        String?
+
+  // Metadata
+  lastConnectedAt      DateTime?
+  lastDisconnectedAt   DateTime?
+  lastBackupAt         DateTime?
+
+  // Timestamps
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@index([status])
+  @@index([tenantId])
+}
+
+// ==========================================
+// CONVERSATION
+// ==========================================
+
+model Conversation {
+  id                  String              @id @default(cuid())
+
+  // Foreign Keys
+  tenantId            String
+  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  contactId           String?
+  contact             Contact?            @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  // Customer Info
+  customerPhone       String
+  customerName        String?
+  customerAvatarUrl   String?             @db.Text
+
+  // State
+  status              ConversationStatus  @default(ACTIVE)
+
+  // Counters
+  unreadCount         Int                 @default(0)
+  totalMessages       Int                 @default(0)
+
+  // Last Message (for sorting)
+  lastMessageAt       DateTime            @default(now())
+  lastMessageContent  String?             @db.Text
+  lastMessageFrom     String?
+
+  // Timestamps
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  // Relations
+  messages            Message[]
+  autoReplyLogs       AutoReplyLog[]
+
+  @@unique([tenantId, customerPhone])
+  @@index([tenantId])
+  @@index([tenantId, lastMessageAt(sort: Desc)])
+  @@index([tenantId, unreadCount])
+}
+
+// ==========================================
+// MESSAGE
+// ==========================================
+
+model Message {
+  id                String            @id @default(cuid())
+
+  // Foreign Keys
+  conversationId    String
+  conversation      Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // WhatsApp Message ID
+  waMessageId       String?           @unique
+
+  // Sender Info
+  senderType        MessageSenderType
+  senderId          String?
+  senderName        String?
+
+  // Message Content
+  messageType       MessageType       @default(TEXT)
+  content           String?           @db.Text
+  mediaUrl          String?           @db.Text
+  mediaMimeType     String?
+
+  // Quoted Message (reply)
+  quotedMessageId   String?
+  quotedMessage     Message?          @relation("MessageReplies", fields: [quotedMessageId], references: [id], onDelete: SetNull)
+  replies           Message[]         @relation("MessageReplies")
+
+  // Delivery Status
+  status            MessageStatus     @default(PENDING)
+
+  // Timestamps
+  sentAt            DateTime          @default(now())
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  createdAt         DateTime          @default(now())
+
+  // Relations
+  autoReplyLogs     AutoReplyLog[]
+
+  @@index([conversationId, sentAt(sort: Desc)])
+  @@index([waMessageId])
+}
+
+// ==========================================
+// CONTACT
+// ==========================================
+
+model Contact {
+  id                   String          @id @default(cuid())
+
+  // Foreign Keys
+  tenantId             String
+  tenant               Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // WhatsApp Info
+  phone                String
+  waId                 String?
+  name                 String?
+  avatarUrl            String?         @db.Text
+
+  // Interaction Stats
+  totalConversations   Int             @default(0)
+  firstContactAt       DateTime?
+  lastContactAt        DateTime?
+
+  // Timestamps
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  // Relations
+  conversations        Conversation[]
+
+  @@unique([tenantId, phone])
+  @@index([tenantId])
+  @@index([phone])
+}
+
+// ==========================================
+// AUTO REPLY RULE
+// ==========================================
+
+model AutoReplyRule {
+  id                String                @id @default(cuid())
+
+  // Foreign Keys
+  tenantId          String
+  tenant            Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Rule Info
+  name              String
+  description       String?               @db.Text
+
+  // Trigger Type
+  triggerType       AutoReplyTriggerType
+
+  // Keywords Array (used for multiple trigger types)
+  // - KEYWORD: ["harga", "promo", "order"] - multiple keywords to match
+  // - ORDER_STATUS: ["PENDING"] or ["PROCESSING"] - single status value
+  // - PAYMENT_STATUS: ["PAID"] or ["FAILED"] - single status value
+  keywords          String[]
+  matchType         KeywordMatchType      @default(CONTAINS)
+  caseSensitive     Boolean               @default(false)
+
+  // Time-based (for outside hours)
+  workingHours      Json?
+
+  // Response
+  responseMessage   String                @db.Text
+
+  // Behavior
+  priority          Int                   @default(50)
+  delaySeconds      Int                   @default(2)
+
+  // Tracking
+  totalTriggered    Int                   @default(0)
+  lastTriggeredAt   DateTime?
+
+  // Status
+  isActive          Boolean               @default(true)
+
+  // Timestamps
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  // Relations
+  logs              AutoReplyLog[]
+
+  // Indexes
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@index([tenantId, priority(sort: Desc)])
+
+  // Unique Constraint: Prevent duplicate rules per status per tenant
+  // Ensures: 1 tenant can only create 1 rule per ORDER_STATUS/PAYMENT_STATUS
+  @@unique([tenantId, triggerType, keywords])
+}
+
+// ==========================================
+// AUTO REPLY LOG
+// ==========================================
+
+model AutoReplyLog {
+  id                   String          @id @default(cuid())
+
+  // Foreign Keys
+  ruleId               String
+  rule                 AutoReplyRule   @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  conversationId       String
+  conversation         Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  messageId            String?
+  message              Message?        @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  // Trigger Info
+  triggeredByMessage   String?         @db.Text
+  responseSent         String?         @db.Text
+  matchedKeyword       String?
+
+  // Timestamp
+  triggeredAt          DateTime        @default(now())
+
+  @@index([ruleId, triggeredAt(sort: Desc)])
+  @@index([conversationId])
 }
