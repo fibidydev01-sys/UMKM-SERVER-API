@@ -125,6 +125,11 @@ model Tenant {
   products      Product[]
   customers     Customer[]
   orders        Order[]
+  feeds          Feed[]
+  feedLikes      FeedLike[]
+  feedComments   FeedComment[]
+  feedViews      FeedView[]
+  feedBookmarks  FeedBookmark[]
 
   // WhatsApp Chat System Relations
   whatsappSession  WhatsAppSession?
@@ -184,7 +189,8 @@ model Product {
   
   // Relations
   orderItems   OrderItem[]
-  
+  feeds        Feed[]
+
   @@unique([tenantId, sku])
   @@unique([tenantId, slug])  // NEW: Ensure unique slug per tenant
   @@index([tenantId])
@@ -610,4 +616,115 @@ model AutoReplyLog {
 
   @@index([ruleId, triggeredAt(sort: Desc)])
   @@index([conversationId])
+}
+
+// ==========================================
+// FEED (Product Discovery Feed)
+// ==========================================
+
+model Feed {
+  id            String   @id @default(cuid())
+
+  // Relations
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Content
+  caption       String?  @db.Text
+
+  // Engagement Metrics (counters)
+  viewCount     Int      @default(0)
+  likeCount     Int      @default(0)
+  commentCount  Int      @default(0)
+
+  // Engagement counter
+  bookmarkCount Int      @default(0)
+
+  // Interaction Relations
+  likes         FeedLike[]
+  comments      FeedComment[]
+  views         FeedView[]
+  bookmarks     FeedBookmark[]
+
+  // Timestamps
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Constraints
+  @@unique([tenantId, productId])  // 1 tenant hanya bisa post 1 produk sekali
+  @@index([createdAt(sort: Desc)]) // Chronological query
+  @@index([tenantId])
+}
+
+model FeedLike {
+  id        String   @id @default(cuid())
+
+  feedId    String
+  feed      Feed     @relation(fields: [feedId], references: [id], onDelete: Cascade)
+
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([feedId, tenantId])  // 1 tenant hanya bisa like 1x per feed
+  @@index([feedId])
+}
+
+model FeedComment {
+  id        String   @id @default(cuid())
+
+  feedId    String
+  feed      Feed     @relation(fields: [feedId], references: [id], onDelete: Cascade)
+
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  content   String   @db.Text
+
+  // Nested reply support
+  parentId  String?
+  parent    FeedComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   FeedComment[] @relation("CommentReplies")
+
+  createdAt DateTime @default(now())
+
+  @@index([feedId, createdAt(sort: Desc)])  // Comments chronological per feed
+  @@index([parentId])
+}
+
+// Track unique views per user per feed
+model FeedView {
+  id        String   @id @default(cuid())
+
+  feedId    String
+  feed      Feed     @relation(fields: [feedId], references: [id], onDelete: Cascade)
+
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([feedId, tenantId])  // 1 user hanya dihitung 1x view
+  @@index([feedId])
+}
+
+// Bookmark/Save feed post
+model FeedBookmark {
+  id        String   @id @default(cuid())
+
+  feedId    String
+  feed      Feed     @relation(fields: [feedId], references: [id], onDelete: Cascade)
+
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([feedId, tenantId])  // 1 user hanya bisa bookmark 1x per feed
+  @@index([feedId])
+  @@index([tenantId])
 }

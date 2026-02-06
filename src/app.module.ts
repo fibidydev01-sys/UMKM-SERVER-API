@@ -20,6 +20,7 @@ import { ConversationsModule } from './conversations/conversations.module';
 import { MessagesModule } from './messages/messages.module';
 import { ContactsModule } from './contacts/contacts.module';
 import { AutoReplyModule } from './auto-reply/auto-reply.module';
+import { FeedModule } from './feed/feed.module';
 
 @Module({
   imports: [
@@ -50,6 +51,8 @@ import { AutoReplyModule } from './auto-reply/auto-reply.module';
     MessagesModule,
     ContactsModule,
     AutoReplyModule,
+    // Feed System
+    FeedModule,
   ],
   controllers: [AppController],
   providers: [
