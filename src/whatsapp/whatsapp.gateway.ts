@@ -11,7 +11,6 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
-@UseGuards(ThrottlerGuard)
 @WebSocketGateway({
   namespace: '/whatsapp',
   cors: {
