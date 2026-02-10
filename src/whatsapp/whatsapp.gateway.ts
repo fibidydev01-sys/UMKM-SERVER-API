@@ -15,13 +15,14 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 @WebSocketGateway({
   namespace: '/whatsapp',
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: (process.env.FRONTEND_URL || 'http://localhost:3000')
+      .split(',')
+      .map((o) => o.trim()),
     credentials: true,
   },
 })
 export class WhatsAppGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
-{
+  implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
@@ -30,7 +31,7 @@ export class WhatsAppGateway
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   async handleConnection(client: Socket) {
     try {
