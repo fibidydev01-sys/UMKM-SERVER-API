@@ -21,11 +21,15 @@ import { MessagesModule } from './messages/messages.module';
 import { ContactsModule } from './contacts/contacts.module';
 import { AutoReplyModule } from './auto-reply/auto-reply.module';
 import { FeedModule } from './feed/feed.module';
+import { SubscriptionModule } from './subscription/subscription.module';
+import { PaymentModule } from './payment/payment.module';
+import midtransConfig from './config/midtrans.config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      load: [midtransConfig],
     }),
     // Rate Limiting - 100 requests per 60 seconds per IP
     ThrottlerModule.forRoot([
@@ -53,6 +57,9 @@ import { FeedModule } from './feed/feed.module';
     AutoReplyModule,
     // Feed System
     FeedModule,
+    // Subscription & Payment Gateway
+    SubscriptionModule,
+    PaymentModule,
   ],
   controllers: [AppController],
   providers: [

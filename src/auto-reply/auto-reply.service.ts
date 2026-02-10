@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { ConversationsService } from '../conversations/conversations.service';
@@ -231,11 +237,13 @@ export class AutoReplyService {
     return {
       rules: rules.map((rule) => ({
         id: rule.id,
+        tenantId: rule.tenantId,
         name: rule.name,
         description: rule.description,
         triggerType: rule.triggerType,
         keywords: rule.keywords,
         matchType: rule.matchType,
+        caseSensitive: rule.caseSensitive,
         workingHours: rule.workingHours,
         responseMessage: rule.responseMessage,
         priority: rule.priority,
@@ -244,6 +252,7 @@ export class AutoReplyService {
         totalTriggered: rule.totalTriggered,
         lastTriggeredAt: rule.lastTriggeredAt?.toISOString(),
         createdAt: rule.createdAt.toISOString(),
+        updatedAt: rule.updatedAt.toISOString(),
       })),
     };
   }
@@ -273,11 +282,13 @@ export class AutoReplyService {
 
     return {
       id: rule.id,
+      tenantId: rule.tenantId,
       name: rule.name,
       description: rule.description,
       triggerType: rule.triggerType,
       keywords: rule.keywords,
       matchType: rule.matchType,
+      caseSensitive: rule.caseSensitive,
       workingHours: rule.workingHours,
       responseMessage: rule.responseMessage,
       priority: rule.priority,
@@ -286,6 +297,7 @@ export class AutoReplyService {
       totalTriggered: rule.totalTriggered,
       lastTriggeredAt: rule.lastTriggeredAt?.toISOString(),
       createdAt: rule.createdAt.toISOString(),
+      updatedAt: rule.updatedAt.toISOString(),
       recentLogs: rule.logs.map((log) => ({
         id: log.id,
         triggeredByMessage: log.triggeredByMessage,
@@ -316,22 +328,35 @@ export class AutoReplyService {
       status,
     );
 
-    const rule = await this.prisma.autoReplyRule.create({
-      data: {
-        tenantId,
-        name: dto.name,
-        description: dto.description,
-        triggerType: dto.triggerType,
-        keywords: dto.keywords || [],
-        matchType: dto.matchType,
-        caseSensitive: dto.caseSensitive ?? false,
-        workingHours: dto.workingHours as any,
-        responseMessage: dto.responseMessage,
-        priority, // Auto-assigned
-        delaySeconds, // Auto-assigned
-        isActive: dto.isActive ?? true,
-      },
-    });
+    let rule;
+    try {
+      rule = await this.prisma.autoReplyRule.create({
+        data: {
+          tenantId,
+          name: dto.name,
+          description: dto.description,
+          triggerType: dto.triggerType,
+          keywords: dto.keywords || [],
+          matchType: dto.matchType,
+          caseSensitive: dto.caseSensitive ?? false,
+          workingHours: dto.workingHours as any,
+          responseMessage: dto.responseMessage,
+          priority, // Auto-assigned
+          delaySeconds, // Auto-assigned
+          isActive: dto.isActive ?? true,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Rule untuk tipe dan status ini sudah ada. Edit rule yang sudah ada atau hapus dulu sebelum membuat baru.',
+        );
+      }
+      throw error;
+    }
 
     this.logger.log(`Auto-reply rule created: ${rule.id}`);
 
@@ -339,10 +364,22 @@ export class AutoReplyService {
       success: true,
       rule: {
         id: rule.id,
+        tenantId: rule.tenantId,
         name: rule.name,
+        description: rule.description,
         triggerType: rule.triggerType,
+        keywords: rule.keywords,
+        matchType: rule.matchType,
+        caseSensitive: rule.caseSensitive,
+        workingHours: rule.workingHours,
+        responseMessage: rule.responseMessage,
+        priority: rule.priority,
+        delaySeconds: rule.delaySeconds,
         isActive: rule.isActive,
+        totalTriggered: rule.totalTriggered,
+        lastTriggeredAt: rule.lastTriggeredAt?.toISOString(),
         createdAt: rule.createdAt.toISOString(),
+        updatedAt: rule.updatedAt.toISOString(),
       },
     };
   }
@@ -409,9 +446,21 @@ export class AutoReplyService {
       success: true,
       rule: {
         id: updated.id,
+        tenantId: updated.tenantId,
         name: updated.name,
+        description: updated.description,
         triggerType: updated.triggerType,
+        keywords: updated.keywords,
+        matchType: updated.matchType,
+        caseSensitive: updated.caseSensitive,
+        workingHours: updated.workingHours,
+        responseMessage: updated.responseMessage,
+        priority: updated.priority,
+        delaySeconds: updated.delaySeconds,
         isActive: updated.isActive,
+        totalTriggered: updated.totalTriggered,
+        lastTriggeredAt: updated.lastTriggeredAt?.toISOString(),
+        createdAt: updated.createdAt.toISOString(),
         updatedAt: updated.updatedAt.toISOString(),
       },
     };

@@ -11,7 +11,7 @@ import {
   Min,
   Max,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { AutoReplyTriggerType, KeywordMatchType } from '@prisma/client';
 
 class WorkingHoursDto {
@@ -52,6 +52,11 @@ export class CreateRuleDto {
   // - PAYMENT_STATUS: ["PAID"] - single status value in array
   @IsOptional()
   @IsArray()
+  @Transform(({ value }) =>
+    Array.isArray(value)
+      ? value.filter((v: unknown) => v !== null && v !== undefined).map(String)
+      : value,
+  )
   @IsString({ each: true })
   keywords?: string[];
 

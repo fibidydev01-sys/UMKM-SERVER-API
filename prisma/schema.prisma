@@ -36,6 +36,22 @@ enum PaymentStatus {
 }
 
 // ==========================================
+// SUBSCRIPTION ENUMS
+// ==========================================
+
+enum SubscriptionPlan {
+  STARTER
+  BUSINESS
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  PAST_DUE
+}
+
+// ==========================================
 // TENANT (UMKM)
 // ==========================================
 
@@ -130,6 +146,10 @@ model Tenant {
   feedComments   FeedComment[]
   feedViews      FeedView[]
   feedBookmarks  FeedBookmark[]
+
+  // Subscription
+  subscription          Subscription?
+  subscriptionPayments  SubscriptionPayment[]
 
   // WhatsApp Chat System Relations
   whatsappSession  WhatsAppSession?
@@ -616,6 +636,102 @@ model AutoReplyLog {
 
   @@index([ruleId, triggeredAt(sort: Desc)])
   @@index([conversationId])
+}
+
+// ==========================================
+// SUBSCRIPTION (Plan UMKM)
+// ==========================================
+
+model Subscription {
+  id                 String             @id @default(cuid())
+
+  tenantId           String             @unique
+  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  plan               SubscriptionPlan   @default(STARTER)
+  status             SubscriptionStatus @default(ACTIVE)
+
+  // Periode aktif (null = Starter/free, tidak ada expiry)
+  currentPeriodStart DateTime?          @map("current_period_start")
+  currentPeriodEnd   DateTime?          @map("current_period_end")
+
+  // Trial
+  isTrial            Boolean            @default(false) @map("is_trial")
+  trialEndsAt        DateTime?          @map("trial_ends_at")
+
+  // Harga saat subscribe (snapshot)
+  priceAmount        Float              @default(0) @map("price_amount")
+  currency           String             @default("IDR")
+
+  // Cancellation
+  cancelledAt        DateTime?          @map("cancelled_at")
+  cancelReason       String?            @map("cancel_reason")
+
+  // Timestamps
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  // Relations
+  payments           SubscriptionPayment[]
+
+  @@map("subscriptions")
+  @@index([tenantId])
+  @@index([status])
+  @@index([plan])
+  @@index([currentPeriodEnd])
+}
+
+// ==========================================
+// SUBSCRIPTION PAYMENT (Pembayaran via Midtrans)
+// ==========================================
+
+model SubscriptionPayment {
+  id                    String       @id @default(cuid())
+
+  subscriptionId        String       @map("subscription_id")
+  subscription          Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  tenantId              String       @map("tenant_id")
+  tenant                Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Midtrans identifiers
+  midtransOrderId       String       @unique @map("midtrans_order_id")
+  midtransTransactionId String?      @unique @map("midtrans_transaction_id")
+  snapToken             String?      @map("snap_token")
+  snapRedirectUrl       String?      @map("snap_redirect_url")
+
+  // Amount
+  amount                Float
+  currency              String       @default("IDR")
+
+  // Payment method detail (dari Midtrans webhook)
+  paymentType           String?      @map("payment_type")
+  bank                  String?
+  vaNumber              String?      @map("va_number")
+
+  // Status: pending | settlement | capture | cancel | deny | expire | failure | refund
+  paymentStatus         String       @default("pending") @map("payment_status")
+  fraudStatus           String?      @map("fraud_status")
+
+  // Periode yang dibayar
+  periodStart           DateTime     @map("period_start")
+  periodEnd             DateTime     @map("period_end")
+
+  // Webhook raw data (untuk audit/debugging)
+  rawNotification       Json?        @map("raw_notification")
+  metadata              Json?
+
+  // Timestamps
+  paidAt                DateTime?    @map("paid_at")
+  createdAt             DateTime     @default(now()) @map("created_at")
+  updatedAt             DateTime     @updatedAt @map("updated_at")
+
+  @@map("subscription_payments")
+  @@index([tenantId])
+  @@index([subscriptionId])
+  @@index([midtransOrderId])
+  @@index([paymentStatus])
+  @@index([tenantId, createdAt])
 }
 
 // ==========================================
