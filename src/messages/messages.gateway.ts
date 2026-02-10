@@ -1,14 +1,17 @@
 import {
   WebSocketGateway,
   WebSocketServer,
+  SubscribeMessage,
   OnGatewayConnection,
   OnGatewayDisconnect,
-  SubscribeMessage,
+  MessageBody,
+  ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger, UseGuards } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../prisma/prisma.service';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
 // HAPUS: @UseGuards(ThrottlerGuard)
@@ -22,15 +25,16 @@ import { ThrottlerGuard } from '@nestjs/throttler';
   },
 })
 
-export class WhatsAppGateway
+export class MessagesGateway
   implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
-  private readonly logger = new Logger(WhatsAppGateway.name);
+  private readonly logger = new Logger(MessagesGateway.name);
 
   constructor(
     private readonly jwtService: JwtService,
+    private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
   ) { }
 
@@ -61,40 +65,25 @@ export class WhatsAppGateway
       client.data.user = payload;
       const tenantId = payload.sub; // JWT payload uses 'sub' field for tenant ID
 
-      // Join room based on tenantId
+      // Join tenant room for broadcast messages
       client.join(tenantId);
+
       this.logger.log(
-        `Client ${client.id} authenticated and joined room: ${tenantId}`,
+        `Messages client ${client.id} authenticated and joined tenant room: ${tenantId}`,
       );
     } catch (error) {
       this.logger.error(
-        `Authentication failed for client ${client.id}: ${error.message}`,
+        `Authentication failed for Messages client ${client.id}: ${error.message}`,
       );
       client.disconnect();
     }
   }
 
   handleDisconnect(client: Socket) {
-    const tenantId = client.data.user?.sub; // JWT payload uses 'sub' field
+    const tenantId = client.data.user?.sub;
     this.logger.log(
-      `WhatsApp WebSocket client disconnected: ${client.id} (tenant: ${tenantId})`,
+      `Messages WebSocket client disconnected: ${client.id} (tenant: ${tenantId})`,
     );
-  }
-
-  @SubscribeMessage('join-room')
-  handleJoinRoom(client: Socket, payload: { tenantId: string }) {
-    const authenticatedTenantId = client.data.user?.sub; // JWT payload uses 'sub' field
-
-    // Verify that the user is trying to join their own room
-    if (payload.tenantId !== authenticatedTenantId) {
-      this.logger.warn(
-        `Client ${client.id} tried to join unauthorized room: ${payload.tenantId}`,
-      );
-      return;
-    }
-
-    client.join(payload.tenantId);
-    this.logger.log(`Client ${client.id} joined room: ${payload.tenantId}`);
   }
 
   /**
@@ -121,32 +110,145 @@ export class WhatsAppGateway
   }
 
   /**
-   * Emit QR code to client
+   * Client joins a conversation room
    */
-  emitQrCode(tenantId: string, qrCode: string, expiresIn: number = 60) {
-    this.server.to(tenantId).emit('qr-code', {
-      qrCode,
-      expiresIn,
+  @SubscribeMessage('join-conversation')
+  async handleJoinConversation(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { conversationId: string },
+  ) {
+    const tenantId = client.data.user?.sub;
+
+    if (!tenantId) {
+      this.logger.warn(
+        `Client ${client.id} attempted to join conversation without authentication`,
+      );
+      client.emit('error', { message: 'Authentication required' });
+      return;
+    }
+
+    // Validate conversation ownership
+    const conversation = await this.prisma.conversation.findFirst({
+      where: {
+        id: data.conversationId,
+        tenantId: tenantId,
+      },
     });
 
-    this.logger.log(`QR code emitted to tenant: ${tenantId}`);
+    if (!conversation) {
+      this.logger.warn(
+        `Unauthorized join attempt by client ${client.id} (tenant: ${tenantId}) to conversation ${data.conversationId}`,
+      );
+      client.emit('error', { message: 'Unauthorized access to conversation' });
+      return;
+    }
+
+    client.join(data.conversationId);
+    this.logger.log(
+      `Client ${client.id} (tenant: ${tenantId}) joined conversation: ${data.conversationId}`,
+    );
   }
 
   /**
-   * Emit connection status change
+   * Client leaves a conversation room
    */
-  emitConnectionStatus(
-    tenantId: string,
-    status: 'connecting' | 'connected' | 'disconnected',
-    phoneNumber?: string,
+  @SubscribeMessage('leave-conversation')
+  async handleLeaveConversation(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { conversationId: string },
   ) {
-    this.server.to(tenantId).emit('connection-status', {
+    const tenantId = client.data.user?.sub;
+
+    if (!tenantId) {
+      this.logger.warn(
+        `Client ${client.id} attempted to leave conversation without authentication`,
+      );
+      return;
+    }
+
+    // Validate conversation ownership before leaving
+    const conversation = await this.prisma.conversation.findFirst({
+      where: {
+        id: data.conversationId,
+        tenantId: tenantId,
+      },
+    });
+
+    if (!conversation) {
+      this.logger.warn(
+        `Unauthorized leave attempt by client ${client.id} (tenant: ${tenantId}) to conversation ${data.conversationId}`,
+      );
+      return;
+    }
+
+    client.leave(data.conversationId);
+    this.logger.log(
+      `Client ${client.id} (tenant: ${tenantId}) left conversation: ${data.conversationId}`,
+    );
+  }
+
+  /**
+   * Mark messages as read
+   */
+  @SubscribeMessage('mark-as-read')
+  handleMarkAsRead(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { conversationId: string },
+  ) {
+    this.logger.log(
+      `Client ${client.id} marked conversation ${data.conversationId} as read`,
+    );
+    // The actual marking is handled by the controller/service
+  }
+
+  /**
+   * Emit new message to conversation room
+   */
+  emitNewMessage(conversationId: string, message: any) {
+    this.server.to(conversationId).emit('new-message', {
+      conversationId,
+      message,
+    });
+
+    this.logger.log(`New message emitted to conversation: ${conversationId}`);
+  }
+
+  /**
+   * Emit message status update
+   */
+  async emitMessageStatusUpdated(messageId: string, status: string) {
+    // Get conversation from message to ensure we only emit to authorized clients
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: { conversationId: true },
+    });
+
+    if (!message) {
+      this.logger.warn(
+        `Message ${messageId} not found for status update emission`,
+      );
+      return;
+    }
+
+    // Emit only to conversation room (not to all clients)
+    this.server.to(message.conversationId).emit('message-status-updated', {
+      messageId,
       status,
-      phoneNumber,
     });
 
     this.logger.log(
-      `Connection status emitted to tenant ${tenantId}: ${status}`,
+      `Message status updated: ${messageId} -> ${status} (conversation: ${message.conversationId})`,
     );
+  }
+
+  /**
+   * Emit new conversation created
+   */
+  emitNewConversation(tenantId: string, conversation: any) {
+    this.server.to(tenantId).emit('new-conversation', {
+      conversation,
+    });
+
+    this.logger.log(`New conversation emitted to tenant: ${tenantId}`);
   }
 }
