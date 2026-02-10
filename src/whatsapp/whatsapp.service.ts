@@ -41,7 +41,7 @@ export class WhatsAppService implements OnModuleDestroy {
     private readonly hybridAuthState: HybridAuthStateService,
     @Inject(forwardRef(() => AutoReplyService))
     private readonly autoReply: AutoReplyService,
-  ) {}
+  ) { }
 
   async onModuleDestroy() {
     // Close all connections and clean up listeners
@@ -118,10 +118,14 @@ export class WhatsAppService implements OnModuleDestroy {
       });
 
       if (!session) {
-        session = await this.prisma.whatsAppSession.create({
-          data: {
+        session = await this.prisma.whatsAppSession.upsert({
+          where: { tenantId },
+          update: {
+            status: WhatsAppSessionStatus.QR_PENDING,
+          },
+          create: {
             tenantId,
-            phoneNumber: 'pending',
+            phoneNumber: `pending-${tenantId}`,  // unique per tenant
             status: WhatsAppSessionStatus.QR_PENDING,
           },
         });
@@ -522,12 +526,12 @@ export class WhatsAppService implements OnModuleDestroy {
     return {
       level: 'silent', // Disable Baileys logging (too verbose)
       child: () => this.createLogger(),
-      trace: () => {},
-      debug: () => {},
-      info: () => {},
-      warn: () => {},
-      error: () => {},
-      fatal: () => {},
+      trace: () => { },
+      debug: () => { },
+      info: () => { },
+      warn: () => { },
+      error: () => { },
+      fatal: () => { },
     };
   }
 }

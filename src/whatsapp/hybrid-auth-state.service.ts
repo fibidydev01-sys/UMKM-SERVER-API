@@ -43,7 +43,7 @@ export class HybridAuthStateService {
     if (!supabaseUrl || !supabaseKey) {
       this.logger.warn(
         '⚠️  Supabase credentials not found. Backup feature disabled. ' +
-          'Set SUPABASE_URL and SUPABASE_SERVICE_KEY to enable.',
+        'Set SUPABASE_URL and SUPABASE_SERVICE_KEY to enable.',
       );
       return;
     }
@@ -207,11 +207,12 @@ export class HybridAuthStateService {
         .download(credsUploadPath);
 
       if (credsError) {
-        if (credsError.message.includes('not found')) {
-          this.logger.debug(`No backup found in Supabase for ${tenantId}`);
-          return false;
-        }
-        throw new Error(`Failed to download creds.json: ${credsError.message}`);
+        const errMsg = credsError.message || JSON.stringify(credsError);
+        // Treat any download error for creds as "no backup" - don't crash
+        this.logger.debug(
+          `No backup found or failed to download for ${tenantId}: ${errMsg}`,
+        );
+        return false;
       }
 
       if (credsData) {
