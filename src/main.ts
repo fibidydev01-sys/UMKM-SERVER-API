@@ -24,23 +24,51 @@ async function bootstrap() {
   // Cookie Parser
   app.use(cookieParser());
 
-  // Allowed origins from ENV
-  const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
-    .split(',')
-    .map((origin) => origin.trim());
+  // ==========================================
+  // 🔥 HYBRID: Whitelist + Wildcard Subdomain
+  // ==========================================
 
-  // CORS with dynamic origin validation
+  // Whitelist domain utama
+  const whitelistedDomains = [
+    'https://fibidy.com', // Main domain
+    'https://www.fibidy.com', // WWW variant
+  ];
+
+  // Wildcard subdomain pattern
+  const wildcardPattern = /^https?:\/\/([a-z0-9-]+)\.fibidy\.com$/;
+
+  // Localhost untuk development
+  const localhostPattern = /^http:\/\/localhost(:\d+)?$/;
+
   app.enableCors({
     origin: (
       origin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void,
     ) => {
+      // Allow requests with no origin (Postman, mobile apps)
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
+
+      // 1. Check whitelist (exact match)
+      if (whitelistedDomains.includes(origin)) {
+        logger.log(`✅ CORS allowed (whitelist): ${origin}`);
+        return callback(null, true);
       }
+
+      // 2. Check wildcard subdomain (*.fibidy.com)
+      if (wildcardPattern.test(origin)) {
+        logger.log(`✅ CORS allowed (wildcard): ${origin}`);
+        return callback(null, true);
+      }
+
+      // 3. Check localhost for development
+      if (localhostPattern.test(origin)) {
+        logger.log(`✅ CORS allowed (localhost): ${origin}`);
+        return callback(null, true);
+      }
+
+      // Block everything else
+      logger.warn(`❌ CORS blocked: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -109,7 +137,10 @@ async function bootstrap() {
 
   logger.log(`🚀 Server running on http://localhost:${port}`);
   logger.log(`📚 API endpoint: http://localhost:${port}/api`);
-  logger.log(`🌐 CORS enabled for: ${allowedOrigins.join(', ')}`);
+  logger.log(`🌐 CORS enabled for:`);
+  logger.log(`   ✅ Whitelist: ${whitelistedDomains.join(', ')}`);
+  logger.log(`   ✅ Wildcard: *.fibidy.com`);
+  logger.log(`   ✅ Localhost: http://localhost:*`);
   logger.log(`🗜️ Compression: enabled`);
   logger.log(`🛡️ XSS Protection: enabled`);
 }
