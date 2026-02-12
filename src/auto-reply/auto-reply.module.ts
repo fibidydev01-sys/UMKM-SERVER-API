@@ -1,16 +1,18 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AutoReplyService } from './auto-reply.service';
 import { AutoReplyController } from './auto-reply.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
-import { ConversationsModule } from '../conversations/conversations.module';
 import { KeywordEngine } from './engines/keyword-engine';
 import { TimeBasedEngine } from './engines/time-based-engine';
 import { WelcomeEngine } from './engines/welcome-engine';
 import { OrderStatusEngine } from './engines/order-status-engine';
 
 @Module({
-  imports: [PrismaModule, WhatsAppModule, ConversationsModule],
+  imports: [
+    PrismaModule,
+    forwardRef(() => WhatsAppModule), // ✅ Keep forwardRef untuk WhatsAppModule
+  ],
   controllers: [AutoReplyController],
   providers: [
     AutoReplyService,
@@ -21,4 +23,4 @@ import { OrderStatusEngine } from './engines/order-status-engine';
   ],
   exports: [AutoReplyService],
 })
-export class AutoReplyModule {}
+export class AutoReplyModule { }

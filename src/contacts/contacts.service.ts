@@ -5,7 +5,7 @@ import { UpdateContactDto } from './dto/update-contact.dto';
 
 @Injectable()
 export class ContactsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   /**
    * Get all contacts for a tenant
@@ -15,13 +15,6 @@ export class ContactsService {
       where: { tenantId },
       orderBy: {
         lastContactAt: 'desc',
-      },
-      include: {
-        _count: {
-          select: {
-            conversations: true,
-          },
-        },
       },
     });
 
@@ -48,14 +41,6 @@ export class ContactsService {
         id: contactId,
         tenantId,
       },
-      include: {
-        conversations: {
-          orderBy: {
-            lastMessageAt: 'desc',
-          },
-          take: 10,
-        },
-      },
     });
 
     if (!contact) {
@@ -71,12 +56,6 @@ export class ContactsService {
       firstContactAt: contact.firstContactAt?.toISOString(),
       lastContactAt: contact.lastContactAt?.toISOString(),
       createdAt: contact.createdAt.toISOString(),
-      conversations: contact.conversations.map((conv) => ({
-        id: conv.id,
-        status: conv.status,
-        lastMessageAt: conv.lastMessageAt.toISOString(),
-        lastMessageContent: conv.lastMessageContent,
-      })),
     };
   }
 

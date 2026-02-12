@@ -1,3 +1,4 @@
+// whatsapp/whatsapp.module.ts
 import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { WhatsAppService } from './whatsapp.service';
@@ -10,7 +11,7 @@ import { AutoReplyModule } from '../auto-reply/auto-reply.module';
 @Module({
   imports: [
     PrismaModule,
-    forwardRef(() => AutoReplyModule),
+    forwardRef(() => AutoReplyModule), // ✅ ADD forwardRef here too
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'your-secret-key',
       signOptions: { expiresIn: '7d' },
@@ -20,4 +21,4 @@ import { AutoReplyModule } from '../auto-reply/auto-reply.module';
   providers: [WhatsAppService, WhatsAppGateway, HybridAuthStateService],
   exports: [WhatsAppService, WhatsAppGateway, HybridAuthStateService],
 })
-export class WhatsAppModule {}
+export class WhatsAppModule { }

@@ -16,13 +16,13 @@ dev:
     @echo "📊 API: http://localhost:8000"
     @echo "🏥 Health: http://localhost:8000/api/health"
     @echo ""
-    pnpm run start:dev
+    npm run start:dev
 
 # Start production build locally
 start:
     @echo "🚀 Starting production server..."
-    pnpm run build
-    pnpm run start:prod
+    npm run build
+    npm run start:prod
 
 # ====================
 # 📦 DEPENDENCIES
@@ -31,13 +31,13 @@ start:
 # Install dependencies
 install:
     @echo "📦 Installing dependencies..."
-    pnpm install
+    npm install
     @echo "✅ Done!"
 
 # Add package
 add package:
     @echo "➕ Adding {{package}}..."
-    pnpm add {{package}}
+    npm install {{package}}
 
 # ====================
 # 🗄️ DATABASE
@@ -46,25 +46,25 @@ add package:
 # Generate Prisma Client
 db-generate:
     @echo "🔄 Generating Prisma Client..."
-    pnpm exec prisma generate
+    npx prisma generate
     @echo "✅ Done!"
 
 # Push schema to Supabase
 db-push:
     @echo "🔄 Pushing schema to Supabase..."
-    pnpm exec prisma db push --skip-generate
+    npx prisma db push --skip-generate
     @echo "✅ Done!"
 
 # Seed database
 db-seed:
     @echo "🌱 Seeding database..."
-    pnpm run prisma:seed
+    npm run prisma:seed
     @echo "✅ Done!"
 
 # Open Prisma Studio
 db-studio:
     @echo "🎨 Opening Prisma Studio..."
-    pnpm exec prisma studio
+    npx prisma studio
 
 # Complete DB setup
 db-setup:
@@ -80,13 +80,13 @@ db-setup:
 # Format code
 format:
     @echo "✨ Formatting code..."
-    pnpm exec prettier --write "src/**/*.ts"
+    npx prettier --write "src/**/*.ts"
     @echo "✅ Done!"
 
 # Lint code
 lint:
     @echo "🔍 Linting & fixing..."
-    pnpm run lint --fix
+    npm run lint --fix
     @echo "✅ Done!"
 
 # Check API health
@@ -97,13 +97,13 @@ health:
 # ☢️ NUCLEAR OPTIONS
 # ====================
 
-# Nuclear: Clean EVERYTHING (node_modules, dist, pnpm-lock)
+# Nuclear: Clean EVERYTHING (node_modules, dist, package-lock)
 nuclear:
     @echo "☢️  NUCLEAR: Removing EVERYTHING..."
     @echo "⚠️  This will delete:"
     @echo "    - node_modules/"
     @echo "    - dist/"
-    @echo "    - pnpm-lock.yaml"
+    @echo "    - package-lock.json"
     @echo "    - .turbo/"
     @echo "    - .cache/"
     @echo ""
@@ -113,8 +113,8 @@ nuclear:
     rm -rf node_modules
     @echo "💥 Deleting dist..."
     rm -rf dist
-    @echo "💥 Deleting pnpm-lock.yaml..."
-    rm -f pnpm-lock.yaml
+    @echo "💥 Deleting package-lock.json..."
+    rm -f package-lock.json
     @echo "💥 Deleting cache..."
     rm -rf .turbo node_modules/.cache .cache
     @echo ""
@@ -201,9 +201,9 @@ quickstart-docker:
     docker compose build
     @echo ""
     @echo "🗄️  Setting up database (in container)..."
-    docker compose run --rm api pnpm exec prisma generate
-    docker compose run --rm api pnpm exec prisma db push --skip-generate
-    docker compose run --rm api pnpm run prisma:seed
+    docker compose run --rm api npx prisma generate
+    docker compose run --rm api npx prisma db push --skip-generate
+    docker compose run --rm api npm run prisma:seed
     @echo ""
     @echo "🚀 Starting containers..."
     docker compose up -d

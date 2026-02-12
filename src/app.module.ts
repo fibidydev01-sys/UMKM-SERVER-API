@@ -16,8 +16,6 @@ import { SeoModule } from './seo/seo.module';
 import { CategoriesModule } from './categories/categories.module';
 import { StoreModule } from './store/store.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
-import { ConversationsModule } from './conversations/conversations.module';
-import { MessagesModule } from './messages/messages.module';
 import { ContactsModule } from './contacts/contacts.module';
 import { AutoReplyModule } from './auto-reply/auto-reply.module';
 import { FeedModule } from './feed/feed.module';
@@ -39,7 +37,7 @@ import midtransConfig from './config/midtrans.config';
       },
     ]),
     PrismaModule,
-    RedisModule, // 🔥 Add Redis Module
+    RedisModule,
     AuthModule,
     TenantsModule,
     ProductsModule,
@@ -49,10 +47,8 @@ import midtransConfig from './config/midtrans.config';
     SeoModule,
     CategoriesModule,
     StoreModule,
-    // WhatsApp Chat System Modules
+    // ✅ WhatsApp Chat System Modules (CLEANED)
     WhatsAppModule,
-    ConversationsModule,
-    MessagesModule,
     ContactsModule,
     AutoReplyModule,
     // Feed System
@@ -71,4 +67,4 @@ import midtransConfig from './config/midtrans.config';
     },
   ],
 })
-export class AppModule {}
+export class AppModule { }

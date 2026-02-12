@@ -52,6 +52,31 @@ enum SubscriptionStatus {
 }
 
 // ==========================================
+// WHATSAPP ENUMS (CLEANED)
+// ==========================================
+
+enum WhatsAppSessionStatus {
+  QR_PENDING
+  CONNECTING
+  CONNECTED
+  DISCONNECTED
+}
+
+enum AutoReplyTriggerType {
+  WELCOME
+  KEYWORD
+  TIME_BASED
+  ORDER_STATUS
+  PAYMENT_STATUS
+}
+
+enum KeywordMatchType {
+  EXACT
+  CONTAINS
+  STARTS_WITH
+}
+
+// ==========================================
 // TENANT (UMKM)
 // ==========================================
 
@@ -74,21 +99,21 @@ model Tenant {
   // ==========================================
   metaTitle       String?   @db.VarChar(60)
   metaDescription String?   @db.VarChar(160)
-  socialLinks     Json?     // { instagram, facebook, tiktok, youtube, twitter }
+  socialLinks     Json?
   
   // ==========================================
-  // PAYMENT SETTINGS (NEW)
+  // PAYMENT SETTINGS
   // ==========================================
   currency        String    @default("IDR")
-  taxRate         Float     @default(0)        // Percentage, e.g., 11 for 11%
-  paymentMethods  Json?     // See PaymentMethods type below
+  taxRate         Float     @default(0)
+  paymentMethods  Json?
   
   // ==========================================
-  // SHIPPING SETTINGS (NEW)
+  // SHIPPING SETTINGS
   // ==========================================
-  freeShippingThreshold  Float?                // Minimum order for free shipping
-  defaultShippingCost    Float     @default(0) // Default shipping cost
-  shippingMethods        Json?                 // See ShippingMethods type below
+  freeShippingThreshold  Float?
+  defaultShippingCost    Float     @default(0)
+  shippingMethods        Json?
   
   // ==========================================
   // STORE INFORMATION - HERO SECTION
@@ -106,14 +131,14 @@ model Tenant {
   aboutSubtitle       String?   @db.VarChar(300)
   aboutContent        String?   @db.Text
   aboutImage          String?
-  aboutFeatures       Json?     // [{ icon, title, description }]
+  aboutFeatures       Json?
 
   // ==========================================
   // STORE INFORMATION - TESTIMONIALS SECTION
   // ==========================================
   testimonialsTitle    String?   @db.VarChar(200)
   testimonialsSubtitle String?   @db.VarChar(300)
-  testimonials         Json?     // [{ id, name, role, content, rating, avatar }]
+  testimonials         Json?
 
   // ==========================================
   // STORE INFORMATION - CONTACT SECTION
@@ -141,19 +166,18 @@ model Tenant {
   products      Product[]
   customers     Customer[]
   orders        Order[]
-  feeds          Feed[]
-  feedLikes      FeedLike[]
-  feedComments   FeedComment[]
-  feedViews      FeedView[]
-  feedBookmarks  FeedBookmark[]
+  feeds         Feed[]
+  feedLikes     FeedLike[]
+  feedComments  FeedComment[]
+  feedViews     FeedView[]
+  feedBookmarks FeedBookmark[]
 
   // Subscription
   subscription          Subscription?
   subscriptionPayments  SubscriptionPayment[]
 
-  // WhatsApp Chat System Relations
+  // WhatsApp Auto-Reply System (CLEANED)
   whatsappSession  WhatsAppSession?
-  conversations    Conversation[]
   contacts         Contact[]
   autoReplyRules   AutoReplyRule[]
 
@@ -198,9 +222,7 @@ model Product {
   isActive     Boolean  @default(true)
   isFeatured   Boolean  @default(false)
   
-  // ==========================================
-  // SEO SLUG (Already exists - just adding constraints)
-  // ==========================================
+  // SEO SLUG
   slug         String?
   
   // Timestamps
@@ -212,12 +234,12 @@ model Product {
   feeds        Feed[]
 
   @@unique([tenantId, sku])
-  @@unique([tenantId, slug])  // NEW: Ensure unique slug per tenant
+  @@unique([tenantId, slug])
   @@index([tenantId])
   @@index([tenantId, isActive])
   @@index([tenantId, category])
   @@index([tenantId, isFeatured])
-  @@index([tenantId, slug])   // NEW: Index for slug lookups
+  @@index([tenantId, slug])
 }
 
 // ==========================================
@@ -338,58 +360,6 @@ model OrderItem {
 }
 
 // ==========================================
-// WHATSAPP CHAT SYSTEM
-// ==========================================
-
-enum WhatsAppSessionStatus {
-  QR_PENDING
-  CONNECTING
-  CONNECTED
-  DISCONNECTED
-}
-
-enum ConversationStatus {
-  ACTIVE
-  RESOLVED
-  CLOSED
-}
-
-enum MessageSenderType {
-  CUSTOMER
-  OWNER
-  AUTO_REPLY
-}
-
-enum MessageType {
-  TEXT
-  IMAGE
-  AUDIO
-  DOCUMENT
-}
-
-enum MessageStatus {
-  PENDING
-  SENT
-  DELIVERED
-  READ
-  FAILED
-}
-
-enum AutoReplyTriggerType {
-  WELCOME
-  KEYWORD
-  TIME_BASED
-  ORDER_STATUS
-  PAYMENT_STATUS
-}
-
-enum KeywordMatchType {
-  EXACT
-  CONTAINS
-  STARTS_WITH
-}
-
-// ==========================================
 // WHATSAPP SESSION
 // ==========================================
 
@@ -425,98 +395,7 @@ model WhatsAppSession {
 }
 
 // ==========================================
-// CONVERSATION
-// ==========================================
-
-model Conversation {
-  id                  String              @id @default(cuid())
-
-  // Foreign Keys
-  tenantId            String
-  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  contactId           String?
-  contact             Contact?            @relation(fields: [contactId], references: [id], onDelete: SetNull)
-
-  // Customer Info
-  customerPhone       String
-  customerName        String?
-  customerAvatarUrl   String?             @db.Text
-
-  // State
-  status              ConversationStatus  @default(ACTIVE)
-
-  // Counters
-  unreadCount         Int                 @default(0)
-  totalMessages       Int                 @default(0)
-
-  // Last Message (for sorting)
-  lastMessageAt       DateTime            @default(now())
-  lastMessageContent  String?             @db.Text
-  lastMessageFrom     String?
-
-  // Timestamps
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
-
-  // Relations
-  messages            Message[]
-  autoReplyLogs       AutoReplyLog[]
-
-  @@unique([tenantId, customerPhone])
-  @@index([tenantId])
-  @@index([tenantId, lastMessageAt(sort: Desc)])
-  @@index([tenantId, unreadCount])
-}
-
-// ==========================================
-// MESSAGE
-// ==========================================
-
-model Message {
-  id                String            @id @default(cuid())
-
-  // Foreign Keys
-  conversationId    String
-  conversation      Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  // WhatsApp Message ID
-  waMessageId       String?           @unique
-
-  // Sender Info
-  senderType        MessageSenderType
-  senderId          String?
-  senderName        String?
-
-  // Message Content
-  messageType       MessageType       @default(TEXT)
-  content           String?           @db.Text
-  mediaUrl          String?           @db.Text
-  mediaMimeType     String?
-
-  // Quoted Message (reply)
-  quotedMessageId   String?
-  quotedMessage     Message?          @relation("MessageReplies", fields: [quotedMessageId], references: [id], onDelete: SetNull)
-  replies           Message[]         @relation("MessageReplies")
-
-  // Delivery Status
-  status            MessageStatus     @default(PENDING)
-
-  // Timestamps
-  sentAt            DateTime          @default(now())
-  deliveredAt       DateTime?
-  readAt            DateTime?
-  createdAt         DateTime          @default(now())
-
-  // Relations
-  autoReplyLogs     AutoReplyLog[]
-
-  @@index([conversationId, sentAt(sort: Desc)])
-  @@index([waMessageId])
-}
-
-// ==========================================
-// CONTACT
+// CONTACT (For Auto-Reply Tracking)
 // ==========================================
 
 model Contact {
@@ -541,9 +420,6 @@ model Contact {
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 
-  // Relations
-  conversations        Conversation[]
-
   @@unique([tenantId, phone])
   @@index([tenantId])
   @@index([phone])
@@ -567,10 +443,7 @@ model AutoReplyRule {
   // Trigger Type
   triggerType       AutoReplyTriggerType
 
-  // Keywords Array (used for multiple trigger types)
-  // - KEYWORD: ["harga", "promo", "order"] - multiple keywords to match
-  // - ORDER_STATUS: ["PENDING"] or ["PROCESSING"] - single status value
-  // - PAYMENT_STATUS: ["PAID"] or ["FAILED"] - single status value
+  // Keywords Array
   keywords          String[]
   matchType         KeywordMatchType      @default(CONTAINS)
   caseSensitive     Boolean               @default(false)
@@ -604,13 +477,12 @@ model AutoReplyRule {
   @@index([tenantId, isActive])
   @@index([tenantId, priority(sort: Desc)])
 
-  // Unique Constraint: Prevent duplicate rules per status per tenant
-  // Ensures: 1 tenant can only create 1 rule per ORDER_STATUS/PAYMENT_STATUS
+  // Unique Constraint
   @@unique([tenantId, triggerType, keywords])
 }
 
 // ==========================================
-// AUTO REPLY LOG
+// AUTO REPLY LOG (NUCLEAR CLEAN VERSION)
 // ==========================================
 
 model AutoReplyLog {
@@ -619,12 +491,6 @@ model AutoReplyLog {
   // Foreign Keys
   ruleId               String
   rule                 AutoReplyRule   @relation(fields: [ruleId], references: [id], onDelete: Cascade)
-
-  conversationId       String
-  conversation         Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  messageId            String?
-  message              Message?        @relation(fields: [messageId], references: [id], onDelete: SetNull)
 
   // Trigger Info
   triggeredByMessage   String?         @db.Text
@@ -635,7 +501,6 @@ model AutoReplyLog {
   triggeredAt          DateTime        @default(now())
 
   @@index([ruleId, triggeredAt(sort: Desc)])
-  @@index([conversationId])
 }
 
 // ==========================================
@@ -651,27 +516,21 @@ model Subscription {
   plan               SubscriptionPlan   @default(STARTER)
   status             SubscriptionStatus @default(ACTIVE)
 
-  // Periode aktif (null = Starter/free, tidak ada expiry)
   currentPeriodStart DateTime?          @map("current_period_start")
   currentPeriodEnd   DateTime?          @map("current_period_end")
 
-  // Trial
   isTrial            Boolean            @default(false) @map("is_trial")
   trialEndsAt        DateTime?          @map("trial_ends_at")
 
-  // Harga saat subscribe (snapshot)
   priceAmount        Float              @default(0) @map("price_amount")
   currency           String             @default("IDR")
 
-  // Cancellation
   cancelledAt        DateTime?          @map("cancelled_at")
   cancelReason       String?            @map("cancel_reason")
 
-  // Timestamps
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")
 
-  // Relations
   payments           SubscriptionPayment[]
 
   @@map("subscriptions")
@@ -682,7 +541,7 @@ model Subscription {
 }
 
 // ==========================================
-// SUBSCRIPTION PAYMENT (Pembayaran via Midtrans)
+// SUBSCRIPTION PAYMENT
 // ==========================================
 
 model SubscriptionPayment {
@@ -694,34 +553,27 @@ model SubscriptionPayment {
   tenantId              String       @map("tenant_id")
   tenant                Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  // Midtrans identifiers
   midtransOrderId       String       @unique @map("midtrans_order_id")
   midtransTransactionId String?      @unique @map("midtrans_transaction_id")
   snapToken             String?      @map("snap_token")
   snapRedirectUrl       String?      @map("snap_redirect_url")
 
-  // Amount
   amount                Float
   currency              String       @default("IDR")
 
-  // Payment method detail (dari Midtrans webhook)
   paymentType           String?      @map("payment_type")
   bank                  String?
   vaNumber              String?      @map("va_number")
 
-  // Status: pending | settlement | capture | cancel | deny | expire | failure | refund
   paymentStatus         String       @default("pending") @map("payment_status")
   fraudStatus           String?      @map("fraud_status")
 
-  // Periode yang dibayar
   periodStart           DateTime     @map("period_start")
   periodEnd             DateTime     @map("period_end")
 
-  // Webhook raw data (untuk audit/debugging)
   rawNotification       Json?        @map("raw_notification")
   metadata              Json?
 
-  // Timestamps
   paidAt                DateTime?    @map("paid_at")
   createdAt             DateTime     @default(now()) @map("created_at")
   updatedAt             DateTime     @updatedAt @map("updated_at")
@@ -741,37 +593,29 @@ model SubscriptionPayment {
 model Feed {
   id            String   @id @default(cuid())
 
-  // Relations
   tenantId      String
   tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   productId     String
   product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  // Content
   caption       String?  @db.Text
 
-  // Engagement Metrics (counters)
   viewCount     Int      @default(0)
   likeCount     Int      @default(0)
   commentCount  Int      @default(0)
-
-  // Engagement counter
   bookmarkCount Int      @default(0)
 
-  // Interaction Relations
   likes         FeedLike[]
   comments      FeedComment[]
   views         FeedView[]
   bookmarks     FeedBookmark[]
 
-  // Timestamps
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  // Constraints
-  @@unique([tenantId, productId])  // 1 tenant hanya bisa post 1 produk sekali
-  @@index([createdAt(sort: Desc)]) // Chronological query
+  @@unique([tenantId, productId])
+  @@index([createdAt(sort: Desc)])
   @@index([tenantId])
 }
 
@@ -786,7 +630,7 @@ model FeedLike {
 
   createdAt DateTime @default(now())
 
-  @@unique([feedId, tenantId])  // 1 tenant hanya bisa like 1x per feed
+  @@unique([feedId, tenantId])
   @@index([feedId])
 }
 
@@ -801,18 +645,16 @@ model FeedComment {
 
   content   String   @db.Text
 
-  // Nested reply support
   parentId  String?
   parent    FeedComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
   replies   FeedComment[] @relation("CommentReplies")
 
   createdAt DateTime @default(now())
 
-  @@index([feedId, createdAt(sort: Desc)])  // Comments chronological per feed
+  @@index([feedId, createdAt(sort: Desc)])
   @@index([parentId])
 }
 
-// Track unique views per user per feed
 model FeedView {
   id        String   @id @default(cuid())
 
@@ -824,11 +666,10 @@ model FeedView {
 
   createdAt DateTime @default(now())
 
-  @@unique([feedId, tenantId])  // 1 user hanya dihitung 1x view
+  @@unique([feedId, tenantId])
   @@index([feedId])
 }
 
-// Bookmark/Save feed post
 model FeedBookmark {
   id        String   @id @default(cuid())
 
@@ -840,7 +681,7 @@ model FeedBookmark {
 
   createdAt DateTime @default(now())
 
-  @@unique([feedId, tenantId])  // 1 user hanya bisa bookmark 1x per feed
+  @@unique([feedId, tenantId])
   @@index([feedId])
   @@index([tenantId])
 }

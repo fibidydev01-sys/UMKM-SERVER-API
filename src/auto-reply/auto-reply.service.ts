@@ -7,7 +7,6 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
-import { ConversationsService } from '../conversations/conversations.service';
 import { CreateRuleDto } from './dto/create-rule.dto';
 import { UpdateRuleDto } from './dto/update-rule.dto';
 import { KeywordEngine } from './engines/keyword-engine';
@@ -17,7 +16,6 @@ import { OrderStatusEngine } from './engines/order-status-engine';
 import {
   AutoReplyRule,
   AutoReplyTriggerType,
-  Conversation,
   Contact,
 } from '@prisma/client';
 
@@ -28,15 +26,15 @@ export class AutoReplyService {
   constructor(
     private prisma: PrismaService,
     private whatsappService: WhatsAppService,
-    private conversationsService: ConversationsService,
     private keywordEngine: KeywordEngine,
     private timeBasedEngine: TimeBasedEngine,
     private welcomeEngine: WelcomeEngine,
     private orderStatusEngine: OrderStatusEngine,
-  ) {}
+  ) { }
 
   /**
    * Process incoming message and check auto-reply rules
+   * ✅ CLEANED - Tidak lagi save message atau emit socket
    */
   async processIncomingMessage(
     tenantId: string,
@@ -44,12 +42,8 @@ export class AutoReplyService {
     message: string,
   ): Promise<void> {
     try {
-      // Get or create conversation
-      const conversation =
-        await this.conversationsService.getOrCreateConversation(tenantId, from);
-
-      // Get contact
-      const contact = await this.prisma.contact.findUnique({
+      // Get or create contact
+      let contact = await this.prisma.contact.findUnique({
         where: {
           tenantId_phone: {
             tenantId,
@@ -58,9 +52,19 @@ export class AutoReplyService {
         },
       });
 
+      // Create contact if doesn't exist
       if (!contact) {
-        this.logger.warn(`Contact not found for phone: ${from}`);
-        return;
+        this.logger.log(`Creating contact for phone: ${from}`);
+        contact = await this.prisma.contact.create({
+          data: {
+            tenantId,
+            phone: from,
+            name: from, // Default: phone number as name
+            firstContactAt: new Date(),
+            lastContactAt: new Date(),
+            totalConversations: 1,
+          },
+        });
       }
 
       // Get active rules (by priority, highest first)
@@ -80,7 +84,7 @@ export class AutoReplyService {
 
       // Check each rule
       for (const rule of rules) {
-        const matches = await this.evaluateRule(rule, message, conversation);
+        const matches = await this.evaluateRule(rule, message, contact);
 
         if (!matches) continue;
 
@@ -102,8 +106,8 @@ export class AutoReplyService {
         );
 
         if (result.success) {
-          // Log auto-reply
-          await this.logAutoReply(rule, conversation, message, response);
+          // Log auto-reply (simplified - no conversation dependency)
+          await this.logAutoReply(rule, from, message, response);
 
           // Update rule stats
           await this.updateRuleStats(rule);
@@ -124,15 +128,17 @@ export class AutoReplyService {
 
   /**
    * Evaluate if rule matches
+   * ✅ CLEANED - Tidak lagi depend on Conversation
    */
   private async evaluateRule(
     rule: AutoReplyRule,
     message: string,
-    conversation: Conversation,
+    contact: Contact,
   ): Promise<boolean> {
     switch (rule.triggerType) {
       case AutoReplyTriggerType.WELCOME:
-        return this.welcomeEngine.shouldSendWelcome(conversation);
+        // Check if this is first message from contact
+        return this.welcomeEngine.shouldSendWelcome(contact);
 
       case AutoReplyTriggerType.KEYWORD:
         return this.keywordEngine.matchKeyword(rule, message);
@@ -161,10 +167,11 @@ export class AutoReplyService {
 
   /**
    * Log auto-reply trigger
+   * ✅ CLEANED - Simplified tanpa conversationId
    */
   private async logAutoReply(
     rule: AutoReplyRule,
-    conversation: Conversation,
+    customerPhone: string,
     triggeredBy: string,
     response: string,
   ): Promise<void> {
@@ -181,7 +188,6 @@ export class AutoReplyService {
       await this.prisma.autoReplyLog.create({
         data: {
           ruleId: rule.id,
-          conversationId: conversation.id,
           triggeredByMessage: triggeredBy,
           responseSent: response,
           matchedKeyword,
@@ -409,17 +415,17 @@ export class AutoReplyService {
     const priority =
       dto.triggerType && dto.triggerType !== rule.triggerType
         ? this.getDefaultPriority(
-            dto.triggerType as AutoReplyTriggerType,
-            status,
-          )
+          dto.triggerType as AutoReplyTriggerType,
+          status,
+        )
         : dto.priority;
 
     const delaySeconds =
       dto.triggerType && dto.triggerType !== rule.triggerType
         ? this.getDefaultDelay(
-            dto.triggerType as AutoReplyTriggerType,
-            status,
-          )
+          dto.triggerType as AutoReplyTriggerType,
+          status,
+        )
         : dto.delaySeconds;
 
     const updated = await this.prisma.autoReplyRule.update({
@@ -531,6 +537,7 @@ export class AutoReplyService {
 
   /**
    * Trigger auto-reply notification for order/payment status change
+   * ✅ CLEANED - Tidak lagi save message atau emit socket
    */
   async triggerOrderStatusNotification(
     tenantId: string,
