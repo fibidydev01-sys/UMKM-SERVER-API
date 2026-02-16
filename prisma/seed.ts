@@ -1,9 +1,4 @@
-import {
-  PrismaClient,
-  TenantStatus,
-  OrderStatus,
-  PaymentStatus,
-} from '@prisma/client';
+import { PrismaClient, TenantStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -56,25 +51,6 @@ const IMAGES = {
 };
 
 // ==========================================
-// HELPER FUNCTIONS
-// ==========================================
-
-function generateSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .trim();
-}
-
-function generateOrderNumber(date: Date, index: number): string {
-  const dateStr = date.toISOString().split('T')[0].replace(/-/g, '');
-  const indexStr = String(index).padStart(3, '0');
-  return `ORD-${dateStr}-${indexStr}`;
-}
-
-// ==========================================
 // MAIN SEED
 // ==========================================
 
@@ -83,9 +59,6 @@ async function main() {
 
   // Clean existing data
   console.log('🧹 Cleaning existing data...');
-  await prisma.orderItem.deleteMany();
-  await prisma.order.deleteMany();
-  await prisma.customer.deleteMany();
   await prisma.product.deleteMany();
   await prisma.tenant.deleteMany();
   console.log('✅ Database cleaned\n');
@@ -237,7 +210,16 @@ async function main() {
       // Data is stored in tenant fields above
       // ==========================================
       landingConfig: {
+        enabled: true,
         template: 'modern-starter',
+        sectionOrder: [
+          'hero',
+          'about',
+          'products',
+          'testimonials',
+          'cta',
+          'contact',
+        ],
         hero: {
           enabled: true,
           block: 'hero1',
@@ -291,21 +273,12 @@ async function main() {
         sku: 'BRG-001',
         price: 45000,
         comparePrice: 55000,
-        costPrice: 28000,
         stock: 100,
-        minStock: 10,
         trackStock: true,
         unit: 'pcs',
         isActive: true,
         isFeatured: true,
         images: [IMAGES.burgerClassic],
-        metadata: {
-          weight: '250g',
-          calories: 650,
-          spicyLevel: 0,
-          isHalal: true,
-          preparationTime: 10,
-        },
       },
       {
         tenantId: burgerChina.id,
@@ -317,22 +290,12 @@ async function main() {
         sku: 'BRG-002',
         price: 75000,
         comparePrice: 89000,
-        costPrice: 45000,
         stock: 80,
-        minStock: 10,
         trackStock: true,
         unit: 'pcs',
         isActive: true,
         isFeatured: true,
         images: [IMAGES.burgerDouble],
-        metadata: {
-          weight: '450g',
-          calories: 1100,
-          spicyLevel: 2,
-          isHalal: true,
-          preparationTime: 15,
-          badge: 'Best Seller',
-        },
       },
       {
         tenantId: burgerChina.id,
@@ -344,22 +307,12 @@ async function main() {
         sku: 'BRG-003',
         price: 52000,
         comparePrice: null,
-        costPrice: 32000,
         stock: 60,
-        minStock: 10,
         trackStock: true,
         unit: 'pcs',
         isActive: true,
         isFeatured: true,
         images: [IMAGES.burgerSpicy],
-        metadata: {
-          weight: '280g',
-          calories: 720,
-          spicyLevel: 4,
-          isHalal: true,
-          preparationTime: 12,
-          badge: 'Spicy',
-        },
       },
       {
         tenantId: burgerChina.id,
@@ -371,22 +324,12 @@ async function main() {
         sku: 'BRG-004',
         price: 58000,
         comparePrice: 68000,
-        costPrice: 35000,
         stock: 70,
-        minStock: 10,
         trackStock: true,
         unit: 'pcs',
         isActive: true,
         isFeatured: true,
         images: [IMAGES.burgerCheese],
-        metadata: {
-          weight: '300g',
-          calories: 850,
-          spicyLevel: 0,
-          isHalal: true,
-          preparationTime: 12,
-          badge: 'Cheese Lovers',
-        },
       },
       {
         tenantId: burgerChina.id,
@@ -398,21 +341,12 @@ async function main() {
         sku: 'BRG-005',
         price: 62000,
         comparePrice: null,
-        costPrice: 38000,
         stock: 50,
-        minStock: 10,
         trackStock: true,
         unit: 'pcs',
         isActive: true,
         isFeatured: true,
         images: [IMAGES.burgerBBQ],
-        metadata: {
-          weight: '320g',
-          calories: 920,
-          spicyLevel: 1,
-          isHalal: true,
-          preparationTime: 15,
-        },
       },
       {
         tenantId: burgerChina.id,
@@ -424,21 +358,12 @@ async function main() {
         sku: 'BRG-006',
         price: 55000,
         comparePrice: null,
-        costPrice: 33000,
         stock: 40,
-        minStock: 10,
         trackStock: true,
         unit: 'pcs',
         isActive: true,
         isFeatured: false,
         images: [IMAGES.burgerMushroom],
-        metadata: {
-          weight: '290g',
-          calories: 780,
-          spicyLevel: 0,
-          isHalal: true,
-          preparationTime: 12,
-        },
       },
 
       // ========== CHICKEN BURGERS ==========
@@ -452,22 +377,12 @@ async function main() {
         sku: 'CHK-001',
         price: 48000,
         comparePrice: null,
-        costPrice: 28000,
         stock: 80,
-        minStock: 10,
         trackStock: true,
         unit: 'pcs',
         isActive: true,
         isFeatured: true,
         images: [IMAGES.burgerChicken],
-        metadata: {
-          weight: '260g',
-          calories: 620,
-          spicyLevel: 0,
-          isHalal: true,
-          preparationTime: 12,
-          badge: 'Asian Fusion',
-        },
       },
       {
         tenantId: burgerChina.id,
@@ -479,21 +394,12 @@ async function main() {
         sku: 'CHK-002',
         price: 42000,
         comparePrice: null,
-        costPrice: 25000,
         stock: 90,
-        minStock: 10,
         trackStock: true,
         unit: 'pcs',
         isActive: true,
         isFeatured: false,
         images: [IMAGES.burgerChicken],
-        metadata: {
-          weight: '240g',
-          calories: 580,
-          spicyLevel: 0,
-          isHalal: true,
-          preparationTime: 10,
-        },
       },
 
       // ========== SIDES ==========
@@ -507,21 +413,12 @@ async function main() {
         sku: 'SDE-001',
         price: 25000,
         comparePrice: null,
-        costPrice: 12000,
         stock: 200,
-        minStock: 20,
         trackStock: true,
         unit: 'porsi',
         isActive: true,
         isFeatured: true,
         images: [IMAGES.frenchFries],
-        metadata: {
-          weight: '150g',
-          calories: 380,
-          spicyLevel: 1,
-          isHalal: true,
-          preparationTime: 8,
-        },
       },
       {
         tenantId: burgerChina.id,
@@ -533,21 +430,12 @@ async function main() {
         sku: 'SDE-002',
         price: 35000,
         comparePrice: null,
-        costPrice: 18000,
         stock: 150,
-        minStock: 20,
         trackStock: true,
         unit: 'porsi',
         isActive: true,
         isFeatured: false,
         images: [IMAGES.frenchFries],
-        metadata: {
-          weight: '200g',
-          calories: 520,
-          spicyLevel: 1,
-          isHalal: true,
-          preparationTime: 10,
-        },
       },
       {
         tenantId: burgerChina.id,
@@ -559,21 +447,12 @@ async function main() {
         sku: 'SDE-003',
         price: 22000,
         comparePrice: null,
-        costPrice: 10000,
         stock: 180,
-        minStock: 20,
         trackStock: true,
         unit: 'porsi',
         isActive: true,
         isFeatured: false,
         images: [IMAGES.onionRings],
-        metadata: {
-          weight: '120g',
-          calories: 340,
-          spicyLevel: 0,
-          isHalal: true,
-          preparationTime: 8,
-        },
       },
       {
         tenantId: burgerChina.id,
@@ -585,21 +464,12 @@ async function main() {
         sku: 'SDE-004',
         price: 28000,
         comparePrice: null,
-        costPrice: 15000,
         stock: 160,
-        minStock: 20,
         trackStock: true,
         unit: 'porsi',
         isActive: true,
         isFeatured: false,
         images: [IMAGES.nuggets],
-        metadata: {
-          weight: '180g',
-          calories: 420,
-          spicyLevel: 0,
-          isHalal: true,
-          preparationTime: 8,
-        },
       },
       {
         tenantId: burgerChina.id,
@@ -611,21 +481,12 @@ async function main() {
         sku: 'SDE-005',
         price: 30000,
         comparePrice: null,
-        costPrice: 16000,
         stock: 120,
-        minStock: 15,
         trackStock: true,
         unit: 'porsi',
         isActive: true,
         isFeatured: false,
         images: [IMAGES.mozzaStick],
-        metadata: {
-          weight: '150g',
-          calories: 450,
-          spicyLevel: 0,
-          isHalal: true,
-          preparationTime: 8,
-        },
       },
 
       // ========== DRINKS ==========
@@ -639,20 +500,12 @@ async function main() {
         sku: 'DRK-001',
         price: 15000,
         comparePrice: null,
-        costPrice: 5000,
         stock: 500,
-        minStock: 50,
         trackStock: true,
         unit: 'gelas',
         isActive: true,
         isFeatured: false,
         images: [IMAGES.icedTea],
-        metadata: {
-          volume: '400ml',
-          calories: 120,
-          isHalal: true,
-          preparationTime: 2,
-        },
       },
       {
         tenantId: burgerChina.id,
@@ -663,20 +516,12 @@ async function main() {
         sku: 'DRK-002',
         price: 12000,
         comparePrice: null,
-        costPrice: 6000,
         stock: 600,
-        minStock: 50,
         trackStock: true,
         unit: 'gelas',
         isActive: true,
         isFeatured: false,
         images: [IMAGES.cola],
-        metadata: {
-          volume: '400ml',
-          calories: 180,
-          isHalal: true,
-          preparationTime: 1,
-        },
       },
       {
         tenantId: burgerChina.id,
@@ -688,20 +533,12 @@ async function main() {
         sku: 'DRK-003',
         price: 28000,
         comparePrice: null,
-        costPrice: 12000,
         stock: 200,
-        minStock: 20,
         trackStock: true,
         unit: 'gelas',
         isActive: true,
         isFeatured: true,
         images: [IMAGES.milkshake],
-        metadata: {
-          volume: '350ml',
-          calories: 450,
-          isHalal: true,
-          preparationTime: 5,
-        },
       },
       {
         tenantId: burgerChina.id,
@@ -713,20 +550,12 @@ async function main() {
         sku: 'DRK-004',
         price: 28000,
         comparePrice: null,
-        costPrice: 12000,
         stock: 200,
-        minStock: 20,
         trackStock: true,
         unit: 'gelas',
         isActive: true,
         isFeatured: false,
         images: [IMAGES.milkshake],
-        metadata: {
-          volume: '350ml',
-          calories: 420,
-          isHalal: true,
-          preparationTime: 5,
-        },
       },
       {
         tenantId: burgerChina.id,
@@ -738,20 +567,12 @@ async function main() {
         sku: 'DRK-005',
         price: 18000,
         comparePrice: null,
-        costPrice: 7000,
         stock: 300,
-        minStock: 30,
         trackStock: true,
         unit: 'gelas',
         isActive: true,
         isFeatured: false,
         images: [IMAGES.lemonade],
-        metadata: {
-          volume: '400ml',
-          calories: 90,
-          isHalal: true,
-          preparationTime: 3,
-        },
       },
 
       // ========== COMBO / PAKET ==========
@@ -765,21 +586,12 @@ async function main() {
         sku: 'CMB-001',
         price: 70000,
         comparePrice: 85000,
-        costPrice: 45000,
         stock: null,
-        minStock: null,
         trackStock: false,
         unit: 'paket',
         isActive: true,
         isFeatured: true,
         images: [IMAGES.burgerClassic, IMAGES.frenchFries, IMAGES.icedTea],
-        metadata: {
-          items: ['Classic China Burger', 'Dragon Fries', 'Ice Lemon Tea'],
-          savings: 15000,
-          isHalal: true,
-          preparationTime: 15,
-          badge: 'Value Deal',
-        },
       },
       {
         tenantId: burgerChina.id,
@@ -791,285 +603,17 @@ async function main() {
         sku: 'CMB-002',
         price: 115000,
         comparePrice: 138000,
-        costPrice: 75000,
         stock: null,
-        minStock: null,
         trackStock: false,
         unit: 'paket',
         isActive: true,
         isFeatured: true,
         images: [IMAGES.burgerDouble, IMAGES.frenchFries, IMAGES.milkshake],
-        metadata: {
-          items: [
-            'Double Dragon Burger',
-            'Loaded Cheese Fries',
-            'Chocolate Milkshake',
-          ],
-          savings: 23000,
-          isHalal: true,
-          preparationTime: 20,
-          badge: 'Best Value',
-        },
       },
     ],
   });
 
   console.log(`✅ Created ${products.count} products`);
-
-  // ==========================================
-  // CREATE CUSTOMERS
-  // ==========================================
-  console.log('\n👥 Creating Customers...');
-
-  const customer1 = await prisma.customer.create({
-    data: {
-      tenantId: burgerChina.id,
-      name: 'Budi Santoso',
-      phone: '081234567101',
-      email: 'budi.santoso@email.com',
-      address: 'Jl. Sudirman No. 100, Jakarta Pusat',
-      totalOrders: 15,
-      totalSpent: 1250000,
-      metadata: {
-        favoriteItem: 'Double Dragon Burger',
-        notes: 'Pelanggan loyal, suka extra spicy',
-        birthday: '1990-05-15',
-      },
-    },
-  });
-
-  const customer2 = await prisma.customer.create({
-    data: {
-      tenantId: burgerChina.id,
-      name: 'Siti Rahayu',
-      phone: '081234567102',
-      email: 'siti.rahayu@email.com',
-      address: 'Jl. Thamrin No. 50, Jakarta Pusat',
-      totalOrders: 8,
-      totalSpent: 680000,
-      metadata: {
-        favoriteItem: 'Chicken Teriyaki Burger',
-        notes: 'Order untuk kantor setiap Jumat',
-        companyName: 'PT Maju Jaya',
-      },
-    },
-  });
-
-  const customer3 = await prisma.customer.create({
-    data: {
-      tenantId: burgerChina.id,
-      name: 'Ahmad Rizki',
-      phone: '081234567103',
-      email: 'ahmad.rizki@email.com',
-      address: 'Jl. Gatot Subroto No. 25, Jakarta Selatan',
-      totalOrders: 22,
-      totalSpent: 1890000,
-      metadata: {
-        favoriteItem: 'Spicy Dragon Burger',
-        notes: 'Pelanggan paling sering order, mahasiswa',
-        memberSince: '2023-01',
-      },
-    },
-  });
-
-  console.log('✅ Created 3 customers');
-
-  // ==========================================
-  // CREATE ORDERS
-  // ==========================================
-  console.log('\n📋 Creating Sample Orders...');
-
-  // Get products for orders
-  const allProducts = await prisma.product.findMany({
-    where: { tenantId: burgerChina.id },
-  });
-
-  const getProduct = (sku: string) => allProducts.find((p) => p.sku === sku);
-
-  const today = new Date();
-  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-  const twoDaysAgo = new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000);
-
-  // Order 1 - Completed, Paid
-  const order1 = await prisma.order.create({
-    data: {
-      tenantId: burgerChina.id,
-      customerId: customer1.id,
-      orderNumber: generateOrderNumber(today, 1),
-      subtotal: 150000,
-      discount: 10000,
-      tax: 0,
-      total: 140000,
-      paymentMethod: 'transfer',
-      paymentStatus: PaymentStatus.PAID,
-      paidAmount: 140000,
-      status: OrderStatus.COMPLETED,
-      completedAt: new Date(),
-      notes: 'Extra spicy untuk semua burger',
-      metadata: {
-        deliveryAddress: 'Jl. Sudirman No. 100',
-        deliveryTime: '12:30',
-      },
-      items: {
-        create: [
-          {
-            productId: getProduct('BRG-002')?.id,
-            name: 'Double Dragon Burger',
-            price: 75000,
-            qty: 2,
-            subtotal: 150000,
-            notes: 'Extra spicy',
-          },
-        ],
-      },
-    },
-  });
-
-  // Order 2 - Processing
-  const order2 = await prisma.order.create({
-    data: {
-      tenantId: burgerChina.id,
-      customerId: customer2.id,
-      orderNumber: generateOrderNumber(today, 2),
-      subtotal: 480000,
-      discount: 30000,
-      tax: 0,
-      total: 450000,
-      paymentMethod: 'transfer',
-      paymentStatus: PaymentStatus.PAID,
-      paidAmount: 450000,
-      status: OrderStatus.PROCESSING,
-      notes: 'Order untuk meeting kantor, pisahkan per box',
-      metadata: {
-        deliveryAddress: 'Jl. Thamrin No. 50, Gedung A Lt. 5',
-        deliveryTime: '11:45',
-        contactPerson: 'Ibu Siti',
-      },
-      items: {
-        create: [
-          {
-            productId: getProduct('CHK-001')?.id,
-            name: 'Chicken Teriyaki Burger',
-            price: 48000,
-            qty: 10,
-            subtotal: 480000,
-            notes: 'Pisahkan saus',
-          },
-        ],
-      },
-    },
-  });
-
-  // Order 3 - Pending
-  const order3 = await prisma.order.create({
-    data: {
-      tenantId: burgerChina.id,
-      customerId: customer3.id,
-      orderNumber: generateOrderNumber(today, 3),
-      subtotal: 115000,
-      discount: 0,
-      tax: 0,
-      total: 115000,
-      paymentMethod: 'cod',
-      paymentStatus: PaymentStatus.PENDING,
-      paidAmount: 0,
-      status: OrderStatus.PENDING,
-      notes: null,
-      metadata: {
-        deliveryAddress: 'Jl. Gatot Subroto No. 25',
-        deliveryTime: '19:00',
-      },
-      items: {
-        create: [
-          {
-            productId: getProduct('CMB-002')?.id,
-            name: 'Combo Dragon',
-            price: 115000,
-            qty: 1,
-            subtotal: 115000,
-          },
-        ],
-      },
-    },
-  });
-
-  // Order 4 - Yesterday, Completed (for history)
-  const order4 = await prisma.order.create({
-    data: {
-      tenantId: burgerChina.id,
-      customerId: customer1.id,
-      orderNumber: generateOrderNumber(yesterday, 1),
-      subtotal: 162000,
-      discount: 0,
-      tax: 0,
-      total: 162000,
-      paymentMethod: 'qris',
-      paymentStatus: PaymentStatus.PAID,
-      paidAmount: 162000,
-      status: OrderStatus.COMPLETED,
-      completedAt: yesterday,
-      createdAt: yesterday,
-      items: {
-        create: [
-          {
-            productId: getProduct('BRG-003')?.id,
-            name: 'Spicy Dragon Burger',
-            price: 52000,
-            qty: 2,
-            subtotal: 104000,
-          },
-          {
-            productId: getProduct('SDE-001')?.id,
-            name: 'Dragon Fries',
-            price: 25000,
-            qty: 1,
-            subtotal: 25000,
-          },
-          {
-            productId: getProduct('DRK-003')?.id,
-            name: 'Chocolate Milkshake',
-            price: 28000,
-            qty: 1,
-            subtotal: 28000,
-          },
-        ],
-      },
-    },
-  });
-
-  // Order 5 - Guest order (no customer account)
-  const order5 = await prisma.order.create({
-    data: {
-      tenantId: burgerChina.id,
-      customerId: null,
-      customerName: 'John Doe',
-      customerPhone: '081999888777',
-      orderNumber: generateOrderNumber(today, 4),
-      subtotal: 70000,
-      discount: 0,
-      tax: 0,
-      total: 70000,
-      paymentMethod: 'cash',
-      paymentStatus: PaymentStatus.PAID,
-      paidAmount: 70000,
-      status: OrderStatus.COMPLETED,
-      completedAt: new Date(),
-      notes: 'Take away',
-      items: {
-        create: [
-          {
-            productId: getProduct('CMB-001')?.id,
-            name: 'Combo Classic',
-            price: 70000,
-            qty: 1,
-            subtotal: 70000,
-          },
-        ],
-      },
-    },
-  });
-
-  console.log('✅ Created 5 sample orders');
 
   // ==========================================
   // SUMMARY
@@ -1098,9 +642,6 @@ async function main() {
   console.log('  ─────────────────────');
   console.log('  • TOTAL             : 20 products');
 
-  console.log('\n👥 CUSTOMERS: 3');
-  console.log('📋 ORDERS   : 5');
-
   console.log('\n🌐 ACCESS URLs:');
   console.log('  • Dashboard : http://localhost:3000/auth/login');
   console.log('  • Store     : http://localhost:3000/store/burgerchina');
@@ -1108,6 +649,10 @@ async function main() {
   console.log('\n🔑 LOGIN CREDENTIALS:');
   console.log('  • Email    : burgerchina@fibidy.com');
   console.log('  • Password : password123');
+
+  console.log('\n💬 ORDER VIA WHATSAPP:');
+  console.log('  • Number   : +6281234567890');
+  console.log('  • Link     : https://wa.me/6281234567890');
 
   console.log('\n');
 }

@@ -11,6 +11,7 @@ import {
 import { MidtransService } from './midtrans.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentTenant } from '../common/decorators/tenant.decorator';
+import type { MidtransNotification } from '../types/external/midtrans.types'; // ✅ TAMBAH 'type'
 
 @Controller('payment')
 export class PaymentController {
@@ -46,7 +47,7 @@ export class PaymentController {
    */
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
-  async handleWebhook(@Body() notification: any) {
+  async handleWebhook(@Body() notification: MidtransNotification) {
     this.logger.log(
       `Webhook: ${notification.order_id} -> ${notification.transaction_status}`,
     );

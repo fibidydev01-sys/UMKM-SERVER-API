@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService, CACHE_TTL, CACHE_KEYS } from '../redis/redis.service';
-import { SeoService } from '../seo/seo.service'; // 🚀 SEO SERVICE
+import { SeoService } from '../seo/seo.service';
 import {
   CreateProductDto,
   UpdateProductDto,
@@ -20,7 +20,7 @@ export class ProductsService {
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
-    private seoService: SeoService, // 🚀 SEO SERVICE INJECTION
+    private seoService: SeoService,
   ) {}
 
   private generateSlug(name: string): string {
@@ -149,7 +149,6 @@ export class ProductsService {
             stock: true,
             trackStock: true,
             unit: true,
-            metadata: true,
             tenant: {
               select: {
                 id: true,
@@ -301,11 +300,9 @@ export class ProductsService {
             price: true,
             comparePrice: true,
             stock: true,
-            minStock: true,
             trackStock: true,
             unit: true,
             images: true,
-            metadata: true,
             isActive: true,
             isFeatured: true,
             slug: true,
@@ -327,7 +324,7 @@ export class ProductsService {
   }
 
   // ==========================================
-  // 🚀 CREATE - dengan SEO indexing
+  // CREATE - dengan SEO indexing
   // ==========================================
   async create(tenantId: string, dto: CreateProductDto) {
     if (dto.sku) {
@@ -353,13 +350,10 @@ export class ProductsService {
         sku: dto.sku,
         price: dto.price,
         comparePrice: dto.comparePrice,
-        costPrice: dto.costPrice,
         stock: dto.stock ?? 0,
-        minStock: dto.minStock ?? 0,
         trackStock: dto.trackStock ?? false,
         unit: dto.unit,
         images: dto.images ?? [],
-        metadata: dto.metadata ?? {},
         isActive: dto.isActive ?? true,
         isFeatured: dto.isFeatured ?? false,
       },
@@ -372,7 +366,7 @@ export class ProductsService {
 
     await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
-    // 🚀 SEO: Index new product
+    // SEO: Index new product
     if (tenant) {
       this.seoService
         .onProductCreated(tenant.slug, product.id, product.slug ?? undefined)
@@ -426,7 +420,7 @@ export class ProductsService {
 
         if (lowStock === true) {
           where.trackStock = true;
-          where.stock = { lte: this.prisma.product.fields.minStock };
+          where.stock = { lte: 10 }; // Low stock threshold
         }
 
         const orderBy: Prisma.ProductOrderByWithRelationInput = {
@@ -450,9 +444,7 @@ export class ProductsService {
               sku: true,
               price: true,
               comparePrice: true,
-              costPrice: true,
               stock: true,
-              minStock: true,
               trackStock: true,
               unit: true,
               images: true,
@@ -516,23 +508,19 @@ export class ProductsService {
             tenantId,
             trackStock: true,
             isActive: true,
+            stock: { lte: 10 }, // Low stock threshold
           },
           select: {
             id: true,
             name: true,
             stock: true,
-            minStock: true,
             unit: true,
           },
         });
 
-        const lowStockProducts = products.filter(
-          (p) => (p.stock ?? 0) <= (p.minStock ?? 0),
-        );
-
         return {
-          count: lowStockProducts.length,
-          products: lowStockProducts,
+          count: products.length,
+          products: products,
         };
       },
       CACHE_TTL.LOW_STOCK,
@@ -552,7 +540,7 @@ export class ProductsService {
   }
 
   // ==========================================
-  // 🚀 UPDATE - dengan SEO reindexing
+  // UPDATE - dengan SEO reindexing
   // ==========================================
   async update(tenantId: string, productId: string, dto: UpdateProductDto) {
     const existing = await this.prisma.product.findFirst({
@@ -590,13 +578,10 @@ export class ProductsService {
         sku: dto.sku,
         price: dto.price,
         comparePrice: dto.comparePrice,
-        costPrice: dto.costPrice,
         stock: dto.stock,
-        minStock: dto.minStock,
         trackStock: dto.trackStock,
         unit: dto.unit,
         images: dto.images,
-        metadata: dto.metadata,
         isActive: dto.isActive,
         isFeatured: dto.isFeatured,
       },
@@ -609,7 +594,7 @@ export class ProductsService {
 
     await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
-    // 🚀 SEO: Reindex updated product
+    // SEO: Reindex updated product
     if (tenant) {
       this.seoService
         .onProductUpdated(tenant.slug, product.id, product.slug ?? undefined)
@@ -617,6 +602,7 @@ export class ProductsService {
           console.error('[SEO] Failed to reindex product:', error.message);
         });
     }
+
     return {
       message: 'Produk berhasil diupdate',
       product,
@@ -650,7 +636,7 @@ export class ProductsService {
     const product = await this.prisma.product.update({
       where: { id: productId },
       data: { stock: newStock },
-      select: { id: true, name: true, stock: true, minStock: true },
+      select: { id: true, name: true, stock: true },
     });
 
     const tenant = await this.prisma.tenant.findUnique({
@@ -704,7 +690,7 @@ export class ProductsService {
   }
 
   // ==========================================
-  // 🚀 REMOVE - dengan SEO notification
+  // REMOVE - dengan SEO notification
   // ==========================================
   async remove(tenantId: string, productId: string) {
     const existing = await this.prisma.product.findFirst({
@@ -725,7 +711,7 @@ export class ProductsService {
 
     await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
-    // 🚀 SEO: Notify search engines about deleted product
+    // SEO: Notify search engines about deleted product
     if (tenant) {
       this.seoService.onProductDeleted(tenant.slug).catch((error) => {
         console.error(
@@ -741,7 +727,7 @@ export class ProductsService {
   }
 
   // ==========================================
-  // 🚀 BULK DELETE - dengan SEO notification
+  // BULK DELETE - dengan SEO notification
   // ==========================================
   async bulkDelete(tenantId: string, ids: string[]) {
     const products = await this.prisma.product.findMany({
@@ -766,7 +752,7 @@ export class ProductsService {
 
     await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
-    // 🚀 SEO: Notify search engines about bulk deletion
+    // SEO: Notify search engines about bulk deletion
     if (tenant) {
       this.seoService.onProductDeleted(tenant.slug).catch((error) => {
         console.error(

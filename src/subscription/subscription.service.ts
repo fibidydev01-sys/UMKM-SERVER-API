@@ -60,8 +60,12 @@ export class SubscriptionService {
     if (!subscription || subscription.plan !== 'BUSINESS') return subscription;
 
     const now = new Date();
-    const isExpired = subscription.currentPeriodEnd && subscription.currentPeriodEnd < now;
-    const isTrialExpired = subscription.isTrial && subscription.trialEndsAt && subscription.trialEndsAt < now;
+    const isExpired =
+      subscription.currentPeriodEnd && subscription.currentPeriodEnd < now;
+    const isTrialExpired =
+      subscription.isTrial &&
+      subscription.trialEndsAt &&
+      subscription.trialEndsAt < now;
 
     if (isExpired || isTrialExpired) {
       const updated = await this.prisma.subscription.update({
@@ -102,25 +106,22 @@ export class SubscriptionService {
     const plan = subscription!.plan;
     const limits = PLAN_LIMITS[plan];
 
-    const [productCount, customerCount] = await Promise.all([
-      this.prisma.product.count({ where: { tenantId } }),
-      this.prisma.customer.count({ where: { tenantId } }),
-    ]);
+    // Only count products (customers removed from schema)
+    const productCount = await this.prisma.product.count({
+      where: { tenantId },
+    });
 
     return {
       subscription,
       limits,
       usage: {
         products: productCount,
-        customers: customerCount,
       },
       isAtLimit: {
         products: productCount >= limits.maxProducts,
-        customers: customerCount >= limits.maxCustomers,
       },
       isOverLimit: {
         products: productCount > limits.maxProducts,
-        customers: customerCount > limits.maxCustomers,
       },
     };
   }
@@ -129,7 +130,10 @@ export class SubscriptionService {
    * Cek apakah tenant boleh pakai fitur tertentu.
    * Auto-downgrade dulu kalau expired.
    */
-  async checkFeatureAccess(tenantId: string, feature: PlanFeature): Promise<boolean> {
+  async checkFeatureAccess(
+    tenantId: string,
+    feature: PlanFeature,
+  ): Promise<boolean> {
     await this.getSubscription(tenantId);
     const subscription = await this.autoDowngradeIfExpired(tenantId);
 
@@ -163,29 +167,14 @@ export class SubscriptionService {
   }
 
   /**
-   * Cek limit customer sebelum create.
-   */
-  async checkCustomerLimit(tenantId: string) {
-    await this.getSubscription(tenantId);
-    const subscription = (await this.autoDowngradeIfExpired(tenantId))!;
-    const limit = PLAN_LIMITS[subscription.plan].maxCustomers;
-
-    if (limit === Infinity) return;
-
-    const count = await this.prisma.customer.count({ where: { tenantId } });
-
-    if (count >= limit) {
-      throw new ForbiddenException(
-        `Batas ${limit} pelanggan tercapai. Upgrade ke Business untuk pelanggan unlimited.`,
-      );
-    }
-  }
-
-  /**
    * Activate Business plan (dipanggil setelah payment success via webhook).
    * Clear trial flags - ini sekarang paid BUSINESS.
    */
-  async activateBusinessPlan(tenantId: string, periodDays: number, price: number) {
+  async activateBusinessPlan(
+    tenantId: string,
+    periodDays: number,
+    price: number,
+  ) {
     const now = new Date();
     const periodEnd = new Date(now);
     periodEnd.setDate(periodEnd.getDate() + periodDays);
@@ -223,7 +212,7 @@ export class SubscriptionService {
   /**
    * Get payment history tenant
    */
-  async getPaymentHistory(tenantId: string) {
+  getPaymentHistory(tenantId: string) {
     return this.prisma.subscriptionPayment.findMany({
       where: { tenantId },
       orderBy: { createdAt: 'desc' },
@@ -241,7 +230,9 @@ export class SubscriptionService {
     const subscription = await this.getSubscription(tenantId);
 
     if (subscription.plan !== 'BUSINESS') {
-      throw new BadRequestException('Tidak ada langganan aktif yang bisa dibatalkan.');
+      throw new BadRequestException(
+        'Tidak ada langganan aktif yang bisa dibatalkan.',
+      );
     }
 
     if (subscription.cancelledAt) {

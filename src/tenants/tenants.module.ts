@@ -1,11 +1,19 @@
 import { Module } from '@nestjs/common';
-import { TenantsService } from './tenants.service';
 import { TenantsController } from './tenants.controller';
-import { SeoModule } from '../seo/seo.module'; // ✅ TAMBAH INI
+import { TenantsService } from './tenants.service';
+import { DomainController } from './domain.controller';
+import { PrismaModule } from '../prisma/prisma.module';
+import { SeoModule } from '../seo/seo.module'; // 🔥 CRITICAL: Import SeoModule!
 
 @Module({
-  imports: [SeoModule], // ✅ TAMBAH INI
-  controllers: [TenantsController],
+  imports: [
+    PrismaModule,
+    SeoModule, // 🔥 CRITICAL: Add SeoModule to imports!
+  ],
+  controllers: [
+    TenantsController,
+    DomainController, // 🚀 Custom domain controller
+  ],
   providers: [TenantsService],
   exports: [TenantsService],
 })

@@ -8,7 +8,8 @@ import { PipeTransform, Injectable, ArgumentMetadata } from '@nestjs/common';
  */
 @Injectable()
 export class SanitizePipe implements PipeTransform {
-  transform(value: unknown, metadata: ArgumentMetadata): unknown {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  transform(value: unknown, _metadata: ArgumentMetadata): unknown {
     // Sanitize ALL input types (body, query, param, custom)
     return this.sanitizeValue(value);
   }

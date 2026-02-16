@@ -1,13 +1,10 @@
-import {
-  Injectable,
-  Logger,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as midtransClient from 'midtrans-client';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SubscriptionService } from '../subscription/subscription.service';
+import { MidtransNotification } from '../types/external/midtrans.types'; // ✅ IMPORT TYPE
 
 @Injectable()
 export class MidtransService {
@@ -23,7 +20,10 @@ export class MidtransService {
     private readonly subscriptionService: SubscriptionService,
   ) {
     this.serverKey = this.configService.get<string>('midtrans.serverKey', '');
-    this.isProduction = this.configService.get<boolean>('midtrans.isProduction', false);
+    this.isProduction = this.configService.get<boolean>(
+      'midtrans.isProduction',
+      false,
+    );
 
     const clientKey = this.configService.get<string>('midtrans.clientKey', '');
 
@@ -47,13 +47,21 @@ export class MidtransService {
     // 1. Get tenant info
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { id: true, slug: true, name: true, email: true, phone: true, whatsapp: true },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        email: true,
+        phone: true,
+        whatsapp: true,
+      },
     });
 
     if (!tenant) throw new BadRequestException('Tenant tidak ditemukan');
 
     // 2. Get current subscription
-    const subscription = await this.subscriptionService.getSubscription(tenantId);
+    const subscription =
+      await this.subscriptionService.getSubscription(tenantId);
 
     // Allow payment if: trial user (converting to paid), or expired/cancelled
     // Block only paid BUSINESS that's still active
@@ -62,7 +70,10 @@ export class MidtransService {
       subscription.status === 'ACTIVE' &&
       !subscription.isTrial
     ) {
-      if (subscription.currentPeriodEnd && subscription.currentPeriodEnd > new Date()) {
+      if (
+        subscription.currentPeriodEnd &&
+        subscription.currentPeriodEnd > new Date()
+      ) {
         throw new BadRequestException('Subscription Business masih aktif');
       }
     }
@@ -74,8 +85,12 @@ export class MidtransService {
     });
 
     // 4. Pricing
-    const price = parseInt(this.configService.get('SUBSCRIPTION_BUSINESS_PRICE', '100000'));
-    const periodDays = parseInt(this.configService.get('SUBSCRIPTION_BUSINESS_PERIOD_DAYS', '30'));
+    const price = parseInt(
+      this.configService.get('SUBSCRIPTION_BUSINESS_PRICE', '100000'),
+    );
+    const periodDays = parseInt(
+      this.configService.get('SUBSCRIPTION_BUSINESS_PERIOD_DAYS', '30'),
+    );
 
     // 5. Generate unique order ID
     const timestamp = Date.now();
@@ -87,7 +102,10 @@ export class MidtransService {
     periodEnd.setDate(periodEnd.getDate() + periodDays);
 
     // 7. Build Midtrans parameter
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3000');
+    const frontendUrl = this.configService.get<string>(
+      'FRONTEND_URL',
+      'http://localhost:3000',
+    );
 
     const parameter = {
       transaction_details: {
@@ -114,7 +132,9 @@ export class MidtransService {
       },
     };
 
-    this.logger.log(`Creating subscription payment: ${midtransOrderId} for tenant ${tenant.slug}`);
+    this.logger.log(
+      `Creating subscription payment: ${midtransOrderId} for tenant ${tenant.slug}`,
+    );
 
     try {
       // 8. Call Midtrans Snap
@@ -146,14 +166,17 @@ export class MidtransService {
       };
     } catch (error) {
       this.logger.error(`Midtrans error: ${error.message}`, error.stack);
-      throw new BadRequestException(`Gagal membuat pembayaran: ${error.message}`);
+      throw new BadRequestException(
+        `Gagal membuat pembayaran: ${error.message}`,
+      );
     }
   }
 
   /**
    * Verify webhook signature (SHA-512)
+   * ✅ FIXED: notification parameter sekarang typed
    */
-  verifySignature(notification: any): boolean {
+  verifySignature(notification: MidtransNotification): boolean {
     const { order_id, status_code, gross_amount, signature_key } = notification;
     const input = `${order_id}${status_code}${gross_amount}${this.serverKey}`;
     const hash = crypto.createHash('sha512').update(input).digest('hex');
@@ -162,8 +185,9 @@ export class MidtransService {
 
   /**
    * Handle webhook notification dari Midtrans
+   * ✅ FIXED: notification parameter sekarang typed
    */
-  async handleNotification(notification: any) {
+  async handleNotification(notification: MidtransNotification) {
     const {
       order_id,
       transaction_id,
@@ -194,7 +218,14 @@ export class MidtransService {
     }
 
     // 3. Idempotency: skip kalau sudah terminal status yang sama
-    const terminalStatuses = ['settlement', 'capture', 'cancel', 'deny', 'expire', 'refund'];
+    const terminalStatuses = [
+      'settlement',
+      'capture',
+      'cancel',
+      'deny',
+      'expire',
+      'refund',
+    ];
     if (
       terminalStatuses.includes(payment.paymentStatus) &&
       payment.paymentStatus === transaction_status
@@ -203,41 +234,50 @@ export class MidtransService {
     }
 
     // 4. Update payment record
+    // ✅ FIXED: Semua property access sekarang type-safe
     await this.prisma.subscriptionPayment.update({
       where: { id: payment.id },
       data: {
         midtransTransactionId: transaction_id,
         paymentStatus: transaction_status,
-        fraudStatus: fraud_status,
+        fraudStatus: fraud_status ?? null,
         paymentType: payment_type,
         bank:
           payment_type === 'bank_transfer'
-            ? notification.va_numbers?.[0]?.bank
+            ? (notification.va_numbers?.[0]?.bank ?? null)
             : payment_type === 'echannel'
               ? 'mandiri'
               : null,
         vaNumber:
           payment_type === 'bank_transfer'
-            ? notification.va_numbers?.[0]?.va_number
+            ? (notification.va_numbers?.[0]?.va_number ?? null)
             : payment_type === 'echannel'
-              ? notification.bill_key
+              ? (notification.bill_key ?? null)
               : null,
         rawNotification: notification,
         paidAt:
-          transaction_status === 'settlement' || transaction_status === 'capture'
-            ? new Date(settlement_time || new Date())
+          transaction_status === 'settlement' ||
+          transaction_status === 'capture'
+            ? new Date(settlement_time ?? new Date())
             : null,
       },
     });
 
     // 5. Activate subscription kalau bayar sukses
-    if (transaction_status === 'settlement' || transaction_status === 'capture') {
+    if (
+      transaction_status === 'settlement' ||
+      transaction_status === 'capture'
+    ) {
       const price = parseFloat(gross_amount);
       const periodDays = parseInt(
         this.configService.get('SUBSCRIPTION_BUSINESS_PERIOD_DAYS', '30'),
       );
 
-      await this.subscriptionService.activateBusinessPlan(payment.tenantId, periodDays, price);
+      await this.subscriptionService.activateBusinessPlan(
+        payment.tenantId,
+        periodDays,
+        price,
+      );
 
       this.logger.log(`Subscription activated for tenant: ${payment.tenantId}`);
     }

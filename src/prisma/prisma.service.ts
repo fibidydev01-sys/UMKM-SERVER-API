@@ -25,16 +25,11 @@ export class PrismaService
     console.log('❌ Database disconnected');
   }
 
-  // Helper untuk clean database (testing only)
   async cleanDatabase() {
     if (process.env.NODE_ENV === 'production') {
       throw new Error('Cannot clean database in production!');
     }
 
-    // Delete in correct order (respect foreign keys)
-    await this.orderItem.deleteMany();
-    await this.order.deleteMany();
-    await this.customer.deleteMany();
     await this.product.deleteMany();
     await this.tenant.deleteMany();
   }

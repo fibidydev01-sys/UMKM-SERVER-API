@@ -9,7 +9,6 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { SeoService } from '../seo/seo.service';
-import { CategoriesService } from '../categories/categories.service'; // ✅ For cache invalidation
 import { RegisterDto, LoginDto } from './dto';
 import { getDefaultLandingConfig } from '../validators/landing-config.validator';
 import type { Tenant, Prisma } from '@prisma/client';
@@ -24,7 +23,6 @@ export class AuthService {
     private jwtService: JwtService,
     private redis: RedisService,
     private seoService: SeoService,
-    private categoriesService: CategoriesService, // ✅ Inject for cache invalidation
   ) {}
 
   async register(dto: RegisterDto) {
@@ -75,18 +73,9 @@ export class AuthService {
             { id: 'ninja', name: 'Ninja Express', enabled: false, note: '' },
           ],
         },
-        // ✅ FIX: Cast to Prisma.InputJsonValue
         landingConfig:
           getDefaultLandingConfig() as unknown as Prisma.InputJsonValue,
       },
-    });
-
-    // ✅ Invalidate category cache (new category might be added)
-    this.categoriesService.invalidateCategoryCache().catch((error) => {
-      console.error(
-        '[Categories] Failed to invalidate cache on registration:',
-        error.message,
-      );
     });
 
     this.seoService.onTenantCreated(tenant.slug).catch((error) => {
@@ -181,8 +170,6 @@ export class AuthService {
         _count: {
           select: {
             products: true,
-            customers: true,
-            orders: true,
           },
         },
       },
@@ -230,47 +217,38 @@ export class AuthService {
           logo: true,
           theme: true,
           landingConfig: true,
-          // SEO Fields
           metaTitle: true,
           metaDescription: true,
           socialLinks: true,
-          // Payment & Shipping
           currency: true,
           taxRate: true,
           paymentMethods: true,
           freeShippingThreshold: true,
           defaultShippingCost: true,
           shippingMethods: true,
-          // 🔥 FIX: Add all landing content fields
-          // Hero
           heroTitle: true,
           heroSubtitle: true,
           heroCtaText: true,
           heroCtaLink: true,
           heroBackgroundImage: true,
-          // About
           aboutTitle: true,
           aboutSubtitle: true,
           aboutContent: true,
           aboutImage: true,
           aboutFeatures: true,
-          // Testimonials
           testimonialsTitle: true,
           testimonialsSubtitle: true,
           testimonials: true,
-          // Contact
           contactTitle: true,
           contactSubtitle: true,
           contactMapUrl: true,
           contactShowMap: true,
           contactShowForm: true,
-          // CTA
           ctaTitle: true,
           ctaSubtitle: true,
           ctaButtonText: true,
           ctaButtonLink: true,
           ctaButtonStyle: true,
-          // Status & Timestamps
           status: true,
           createdAt: true,
           updatedAt: true,

@@ -11,7 +11,7 @@ import { Prisma } from '@prisma/client';
 import { UpdateTenantDto, ChangePasswordDto } from './dto';
 import * as bcrypt from 'bcrypt';
 
-// 🔥 Import validator
+// Import validator
 import { validateAndSanitizeLandingConfig } from '../validators/landing-config.validator';
 
 @Injectable()
@@ -108,7 +108,7 @@ export class TenantsService {
         }
 
         this.logger.debug(
-          `[findBySlug] Found tenant, landingConfig enabled: ${(tenant.landingConfig as any)?.enabled}`,
+          `[findBySlug] Found tenant, has landingConfig: ${!!tenant.landingConfig}`,
         );
 
         return tenant;
@@ -235,8 +235,6 @@ export class TenantsService {
             _count: {
               select: {
                 products: true,
-                customers: true,
-                orders: true,
               },
             },
           },
@@ -253,7 +251,7 @@ export class TenantsService {
   }
 
   // ==========================================
-  // 🔥 FIXED: UPDATE ME with Proper LandingConfig Handling
+  // UPDATE ME with Proper LandingConfig Handling
   // ==========================================
   async updateMe(tenantId: string, dto: UpdateTenantDto) {
     this.logger.log(`[updateMe] Starting update for tenant: ${tenantId}`);
@@ -267,13 +265,10 @@ export class TenantsService {
       throw new NotFoundException('Tenant tidak ditemukan');
     }
 
-    // ==========================================
-    // 🔥 FIX: Build update data object dynamically
-    // Only include fields that are explicitly provided
-    // ==========================================
+    // Build update data object dynamically
     const updateData: Prisma.TenantUpdateInput = {};
 
-    // Basic info - only set if provided
+    // Basic info
     if (dto.name !== undefined) updateData.name = dto.name;
     if (dto.description !== undefined) updateData.description = dto.description;
     if (dto.whatsapp !== undefined) updateData.whatsapp = dto.whatsapp;
@@ -288,26 +283,21 @@ export class TenantsService {
     if (dto.metaDescription !== undefined)
       updateData.metaDescription = dto.metaDescription;
     if (dto.socialLinks !== undefined)
-      updateData.socialLinks =
-        dto.socialLinks as unknown as Prisma.InputJsonValue;
+      updateData.socialLinks = dto.socialLinks as Prisma.InputJsonValue;
 
     // Payment & Shipping
     if (dto.currency !== undefined) updateData.currency = dto.currency;
     if (dto.taxRate !== undefined) updateData.taxRate = dto.taxRate;
     if (dto.paymentMethods !== undefined)
-      updateData.paymentMethods =
-        dto.paymentMethods as unknown as Prisma.InputJsonValue;
+      updateData.paymentMethods = dto.paymentMethods as Prisma.InputJsonValue;
     if (dto.freeShippingThreshold !== undefined)
       updateData.freeShippingThreshold = dto.freeShippingThreshold;
     if (dto.defaultShippingCost !== undefined)
       updateData.defaultShippingCost = dto.defaultShippingCost;
     if (dto.shippingMethods !== undefined)
-      updateData.shippingMethods =
-        dto.shippingMethods as unknown as Prisma.InputJsonValue;
+      updateData.shippingMethods = dto.shippingMethods as Prisma.InputJsonValue;
 
-    // ==========================================
-    // STORE INFORMATION - HERO SECTION
-    // ==========================================
+    // HERO SECTION
     if (dto.heroTitle !== undefined) updateData.heroTitle = dto.heroTitle;
     if (dto.heroSubtitle !== undefined)
       updateData.heroSubtitle = dto.heroSubtitle;
@@ -316,9 +306,7 @@ export class TenantsService {
     if (dto.heroBackgroundImage !== undefined)
       updateData.heroBackgroundImage = dto.heroBackgroundImage;
 
-    // ==========================================
-    // STORE INFORMATION - ABOUT SECTION
-    // ==========================================
+    // ABOUT SECTION
     if (dto.aboutTitle !== undefined) updateData.aboutTitle = dto.aboutTitle;
     if (dto.aboutSubtitle !== undefined)
       updateData.aboutSubtitle = dto.aboutSubtitle;
@@ -329,9 +317,7 @@ export class TenantsService {
       updateData.aboutFeatures =
         dto.aboutFeatures as unknown as Prisma.InputJsonValue;
 
-    // ==========================================
-    // STORE INFORMATION - TESTIMONIALS SECTION
-    // ==========================================
+    // TESTIMONIALS SECTION
     if (dto.testimonialsTitle !== undefined)
       updateData.testimonialsTitle = dto.testimonialsTitle;
     if (dto.testimonialsSubtitle !== undefined)
@@ -340,9 +326,7 @@ export class TenantsService {
       updateData.testimonials =
         dto.testimonials as unknown as Prisma.InputJsonValue;
 
-    // ==========================================
-    // STORE INFORMATION - CONTACT SECTION
-    // ==========================================
+    // CONTACT SECTION
     if (dto.contactTitle !== undefined)
       updateData.contactTitle = dto.contactTitle;
     if (dto.contactSubtitle !== undefined)
@@ -354,9 +338,7 @@ export class TenantsService {
     if (dto.contactShowForm !== undefined)
       updateData.contactShowForm = dto.contactShowForm;
 
-    // ==========================================
-    // STORE INFORMATION - CTA SECTION
-    // ==========================================
+    // CTA SECTION
     if (dto.ctaTitle !== undefined) updateData.ctaTitle = dto.ctaTitle;
     if (dto.ctaSubtitle !== undefined) updateData.ctaSubtitle = dto.ctaSubtitle;
     if (dto.ctaButtonText !== undefined)
@@ -366,25 +348,12 @@ export class TenantsService {
     if (dto.ctaButtonStyle !== undefined)
       updateData.ctaButtonStyle = dto.ctaButtonStyle;
 
-    // ==========================================
-    // 🔥 FIX: Handle landingConfig with detailed logging
-    // ==========================================
+    // Handle landingConfig
     if (dto.landingConfig !== undefined) {
       this.logger.log(`[updateMe] Processing landingConfig...`);
-      this.logger.debug(
-        `[updateMe] Raw landingConfig type: ${typeof dto.landingConfig}`,
-      );
-      this.logger.debug(
-        `[updateMe] Raw landingConfig: ${JSON.stringify(dto.landingConfig, null, 2)}`,
-      );
 
-      // Validate the landing config
       const validationResult = validateAndSanitizeLandingConfig(
         dto.landingConfig,
-      );
-
-      this.logger.debug(
-        `[updateMe] Validation result: valid=${validationResult.valid}`,
       );
 
       if (!validationResult.valid) {
@@ -404,25 +373,12 @@ export class TenantsService {
         );
       }
 
-      // 🔥 KEY FIX: Use validated data if available, otherwise use original dto
-      // This ensures we always have data to save
       const configToSave = validationResult.data ?? dto.landingConfig;
-
-      this.logger.debug(
-        `[updateMe] Config to save: ${JSON.stringify(configToSave, null, 2)}`,
-      );
-
-      updateData.landingConfig =
-        configToSave as unknown as Prisma.InputJsonValue;
+      updateData.landingConfig = configToSave as Prisma.InputJsonValue;
     }
 
-    // ==========================================
     // Perform the update
-    // ==========================================
     this.logger.log(`[updateMe] Executing Prisma update...`);
-    this.logger.debug(
-      `[updateMe] Update data keys: ${Object.keys(updateData).join(', ')}`,
-    );
 
     const tenant = await this.prisma.tenant.update({
       where: { id: tenantId },
@@ -479,24 +435,14 @@ export class TenantsService {
     });
 
     this.logger.log(`[updateMe] Update successful`);
-    this.logger.debug(
-      `[updateMe] Saved landingConfig enabled: ${(tenant.landingConfig as any)?.enabled}`,
-    );
 
-    // ==========================================
-    // 🔥 FIX: Invalidate ALL related caches
-    // ==========================================
-    this.logger.log(
-      `[updateMe] Invalidating caches for slug: ${existing.slug}`,
-    );
-
+    // Invalidate caches
     await Promise.all([
       this.redis.invalidateTenant(tenantId, existing.slug),
-      // Also explicitly delete the slug cache with lowercase
       this.redis.del(CACHE_KEYS.TENANT_SLUG(existing.slug.toLowerCase())),
     ]);
 
-    // Trigger SEO reindex (fire and forget)
+    // Trigger SEO reindex
     this.seoService.onTenantUpdated(existing.slug).catch((error) => {
       this.logger.error(`[SEO] Failed to reindex tenant: ${error.message}`);
     });
@@ -557,7 +503,7 @@ export class TenantsService {
   }
 
   // ==========================================
-  // 🚀 OPTIMIZED: GET DASHBOARD STATS
+  // GET DASHBOARD STATS (CLEANED - No Customer/Order)
   // ==========================================
   async getDashboardStats(tenantId: string) {
     const cacheKey = CACHE_KEYS.TENANT_STATS(tenantId);
@@ -565,125 +511,35 @@ export class TenantsService {
     return this.redis.getOrSet(
       cacheKey,
       async () => {
-        const now = new Date();
-        const startOfToday = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate(),
-        );
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const startOfLastMonth = new Date(
-          now.getFullYear(),
-          now.getMonth() - 1,
-          1,
-        );
-        const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-        const startOfWeek = new Date(now);
-        startOfWeek.setDate(now.getDate() - 7);
+        // Product stats
+        const productStats = await this.prisma.$queryRaw<
+          [{ total: bigint; active: bigint; low_stock: bigint }]
+        >`
+          SELECT 
+            COUNT(*) as total,
+            COUNT(*) FILTER (WHERE "isActive" = true) as active,
+            COUNT(*) FILTER (WHERE "isActive" = true AND "trackStock" = true AND stock <= 5) as low_stock
+          FROM "Product"
+          WHERE "tenantId" = ${tenantId}
+        `;
 
-        const [productStats, customerStats, orderStats, revenueStats] =
-          await Promise.all([
-            this.prisma.$queryRaw<
-              [{ total: bigint; active: bigint; low_stock: bigint }]
-            >`
-            SELECT 
-              COUNT(*) as total,
-              COUNT(*) FILTER (WHERE "isActive" = true) as active,
-              COUNT(*) FILTER (WHERE "isActive" = true AND "trackStock" = true AND stock <= 5) as low_stock
-            FROM "Product"
-            WHERE "tenantId" = ${tenantId}
-          `,
-            this.prisma.$queryRaw<
-              [{ total: bigint; this_month: bigint; last_month: bigint }]
-            >`
-            SELECT 
-              COUNT(*) as total,
-              COUNT(*) FILTER (WHERE "createdAt" >= ${startOfMonth}) as this_month,
-              COUNT(*) FILTER (WHERE "createdAt" >= ${startOfLastMonth} AND "createdAt" <= ${endOfLastMonth}) as last_month
-            FROM "Customer"
-            WHERE "tenantId" = ${tenantId}
-          `,
-            this.prisma.$queryRaw<
-              [
-                {
-                  total: bigint;
-                  today: bigint;
-                  this_week: bigint;
-                  this_month: bigint;
-                  last_month: bigint;
-                  pending: bigint;
-                },
-              ]
-            >`
-            SELECT 
-              COUNT(*) as total,
-              COUNT(*) FILTER (WHERE "createdAt" >= ${startOfToday}) as today,
-              COUNT(*) FILTER (WHERE "createdAt" >= ${startOfWeek}) as this_week,
-              COUNT(*) FILTER (WHERE "createdAt" >= ${startOfMonth}) as this_month,
-              COUNT(*) FILTER (WHERE "createdAt" >= ${startOfLastMonth} AND "createdAt" <= ${endOfLastMonth}) as last_month,
-              COUNT(*) FILTER (WHERE status = 'PENDING') as pending
-            FROM "Order"
-            WHERE "tenantId" = ${tenantId}
-          `,
-            this.prisma.$queryRaw<
-              [
-                {
-                  this_week: number | null;
-                  this_month: number | null;
-                  last_month: number | null;
-                },
-              ]
-            >`
-            SELECT 
-              COALESCE(SUM(total) FILTER (WHERE "createdAt" >= ${startOfWeek} AND status IN ('PROCESSING', 'COMPLETED')), 0) as this_week,
-              COALESCE(SUM(total) FILTER (WHERE "createdAt" >= ${startOfMonth} AND status IN ('PROCESSING', 'COMPLETED')), 0) as this_month,
-              COALESCE(SUM(total) FILTER (WHERE "createdAt" >= ${startOfLastMonth} AND "createdAt" <= ${endOfLastMonth} AND status IN ('PROCESSING', 'COMPLETED')), 0) as last_month
-            FROM "Order"
-            WHERE "tenantId" = ${tenantId}
-          `,
-          ]);
-
-        const [recentOrders, lowStockItems] = await Promise.all([
-          this.prisma.order.findMany({
-            where: { tenantId },
-            orderBy: { createdAt: 'desc' },
-            take: 5,
-            select: {
-              id: true,
-              orderNumber: true,
-              total: true,
-              status: true,
-              paymentStatus: true,
-              createdAt: true,
-              customer: {
-                select: { id: true, name: true, phone: true },
-              },
-              customerName: true,
-              customerPhone: true,
-            },
-          }),
-          this.prisma.product.findMany({
-            where: {
-              tenantId,
-              isActive: true,
-              trackStock: true,
-              stock: { lte: 5 },
-            },
-            orderBy: { stock: 'asc' },
-            take: 5,
-            select: {
-              id: true,
-              name: true,
-              stock: true,
-              sku: true,
-            },
-          }),
-        ]);
-
-        const calculateTrend = (current: number, previous: number): number => {
-          if (previous === 0) return current > 0 ? 100 : 0;
-          return Math.round(((current - previous) / previous) * 100);
-        };
+        // Low stock items
+        const lowStockItems = await this.prisma.product.findMany({
+          where: {
+            tenantId,
+            isActive: true,
+            trackStock: true,
+            stock: { lte: 5 },
+          },
+          orderBy: { stock: 'asc' },
+          take: 5,
+          select: {
+            id: true,
+            name: true,
+            stock: true,
+            sku: true,
+          },
+        });
 
         const products = {
           total: Number(productStats[0]?.total ?? 0),
@@ -691,39 +547,11 @@ export class TenantsService {
           lowStock: Number(productStats[0]?.low_stock ?? 0),
         };
 
-        const customersThisMonth = Number(customerStats[0]?.this_month ?? 0);
-        const customersLastMonth = Number(customerStats[0]?.last_month ?? 0);
-        const ordersThisMonth = Number(orderStats[0]?.this_month ?? 0);
-        const ordersLastMonth = Number(orderStats[0]?.last_month ?? 0);
-        const thisMonthRevenue = Number(revenueStats[0]?.this_month ?? 0);
-        const lastMonthRevenue = Number(revenueStats[0]?.last_month ?? 0);
-
         return {
           products,
-          customers: {
-            total: Number(customerStats[0]?.total ?? 0),
-            thisMonth: customersThisMonth,
-            trend: calculateTrend(customersThisMonth, customersLastMonth),
-          },
-          orders: {
-            total: Number(orderStats[0]?.total ?? 0),
-            today: Number(orderStats[0]?.today ?? 0),
-            thisWeek: Number(orderStats[0]?.this_week ?? 0),
-            thisMonth: ordersThisMonth,
-            pending: Number(orderStats[0]?.pending ?? 0),
-            trend: calculateTrend(ordersThisMonth, ordersLastMonth),
-          },
-          revenue: {
-            thisWeek: Number(revenueStats[0]?.this_week ?? 0),
-            thisMonth: thisMonthRevenue,
-            lastMonth: lastMonthRevenue,
-            trend: calculateTrend(thisMonthRevenue, lastMonthRevenue),
-          },
           alerts: {
             lowStock: products.lowStock,
-            pendingOrders: Number(orderStats[0]?.pending ?? 0),
           },
-          recentOrders,
           lowStockItems,
         };
       },

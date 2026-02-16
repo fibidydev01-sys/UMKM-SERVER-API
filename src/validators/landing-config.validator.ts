@@ -1319,7 +1319,13 @@ export interface LandingSection<T = Record<string, unknown>, V = string> {
 // 🚀 SECTION KEY TYPE
 // ==========================================
 
-export type SectionKey = 'hero' | 'about' | 'products' | 'testimonials' | 'contact' | 'cta';
+export type SectionKey =
+  | 'hero'
+  | 'about'
+  | 'products'
+  | 'testimonials'
+  | 'contact'
+  | 'cta';
 
 // ==========================================
 // 🚀 UPDATED: Landing Config with Template & Section Order
@@ -1963,7 +1969,14 @@ export function getDefaultLandingConfig(): LandingConfig {
   return {
     enabled: false,
     template: 'suspended-minimalist', // 🚀 Default template
-    sectionOrder: ['hero', 'about', 'products', 'testimonials', 'cta', 'contact'], // 🚀 Default order
+    sectionOrder: [
+      'hero',
+      'about',
+      'products',
+      'testimonials',
+      'cta',
+      'contact',
+    ], // 🚀 Default order
     hero: {
       enabled: false,
       title: '',
