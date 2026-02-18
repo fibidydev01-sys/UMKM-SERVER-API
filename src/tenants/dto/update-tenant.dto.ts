@@ -21,6 +21,7 @@ import { Type, Transform } from 'class-transformer';
 // ==========================================
 
 class SocialLinksDto {
+  // ── Mainstream ──────────────────────────────────
   @IsOptional()
   @IsString()
   @IsUrl({}, { message: 'Instagram harus berupa URL yang valid' })
@@ -45,6 +46,49 @@ class SocialLinksDto {
   @IsString()
   @IsUrl({}, { message: 'Twitter/X harus berupa URL yang valid' })
   twitter?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsUrl({}, { message: 'Threads harus berupa URL yang valid' })
+  threads?: string;
+
+  // ── Messaging ───────────────────────────────────
+  @IsOptional()
+  @IsString()
+  @IsUrl({}, { message: 'WhatsApp harus berupa URL yang valid' })
+  whatsapp?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsUrl({}, { message: 'Telegram harus berupa URL yang valid' })
+  telegram?: string;
+
+  // ── Visual / Portfolio ──────────────────────────
+  @IsOptional()
+  @IsString()
+  @IsUrl({}, { message: 'Pinterest harus berupa URL yang valid' })
+  pinterest?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsUrl({}, { message: 'Behance harus berupa URL yang valid' })
+  behance?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsUrl({}, { message: 'Dribbble harus berupa URL yang valid' })
+  dribbble?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsUrl({}, { message: 'Vimeo harus berupa URL yang valid' })
+  vimeo?: string;
+
+  // ── Professional ────────────────────────────────
+  @IsOptional()
+  @IsString()
+  @IsUrl({}, { message: 'LinkedIn harus berupa URL yang valid' })
+  linkedin?: string;
 }
 
 // ==========================================
