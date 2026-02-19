@@ -169,6 +169,7 @@ model Product {
   // Pricing
   price        Float
   comparePrice Float?
+  costPrice    Float?
   
   // Stock (Simple - for display only)
   stock        Int?
@@ -181,6 +182,8 @@ model Product {
   // Status
   isActive     Boolean   @default(true)
   isFeatured   Boolean   @default(false)
+  
+  metadata     Json?
   
   // Timestamps
   createdAt    DateTime  @default(now())

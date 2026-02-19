@@ -89,6 +89,7 @@ export class ProductsService {
             trackStock: true,
             unit: true,
             isActive: true,
+            metadata: true, // ← TAMBAH
             tenant: {
               select: {
                 id: true,
@@ -149,6 +150,7 @@ export class ProductsService {
             stock: true,
             trackStock: true,
             unit: true,
+            metadata: true, // ← TAMBAH
             tenant: {
               select: {
                 id: true,
@@ -243,6 +245,7 @@ export class ProductsService {
               unit: true,
               images: true,
               isFeatured: true,
+              metadata: true, // ← TAMBAH (untuk showPrice di product card)
               createdAt: true,
             },
           }),
@@ -306,6 +309,7 @@ export class ProductsService {
             isActive: true,
             isFeatured: true,
             slug: true,
+            metadata: true, // ← TAMBAH
             createdAt: true,
             updatedAt: true,
           },
@@ -350,12 +354,14 @@ export class ProductsService {
         sku: dto.sku,
         price: dto.price,
         comparePrice: dto.comparePrice,
+        costPrice: dto.costPrice,
         stock: dto.stock ?? 0,
         trackStock: dto.trackStock ?? false,
         unit: dto.unit,
         images: dto.images ?? [],
         isActive: dto.isActive ?? true,
         isFeatured: dto.isFeatured ?? false,
+        metadata: dto.metadata,
       },
     });
 
@@ -420,7 +426,7 @@ export class ProductsService {
 
         if (lowStock === true) {
           where.trackStock = true;
-          where.stock = { lte: 10 }; // Low stock threshold
+          where.stock = { lte: 10 };
         }
 
         const orderBy: Prisma.ProductOrderByWithRelationInput = {
@@ -444,12 +450,14 @@ export class ProductsService {
               sku: true,
               price: true,
               comparePrice: true,
+              costPrice: true,
               stock: true,
               trackStock: true,
               unit: true,
               images: true,
               isActive: true,
               isFeatured: true,
+              metadata: true,
               createdAt: true,
               updatedAt: true,
             },
@@ -508,7 +516,7 @@ export class ProductsService {
             tenantId,
             trackStock: true,
             isActive: true,
-            stock: { lte: 10 }, // Low stock threshold
+            stock: { lte: 10 },
           },
           select: {
             id: true,
@@ -578,12 +586,14 @@ export class ProductsService {
         sku: dto.sku,
         price: dto.price,
         comparePrice: dto.comparePrice,
+        costPrice: dto.costPrice,
         stock: dto.stock,
         trackStock: dto.trackStock,
         unit: dto.unit,
         images: dto.images,
         isActive: dto.isActive,
         isFeatured: dto.isFeatured,
+        metadata: dto.metadata,
       },
     });
 
@@ -711,7 +721,6 @@ export class ProductsService {
 
     await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
-    // SEO: Notify search engines about deleted product
     if (tenant) {
       this.seoService.onProductDeleted(tenant.slug).catch((error) => {
         console.error(
@@ -752,7 +761,6 @@ export class ProductsService {
 
     await this.redis.invalidateAllProductCaches(tenantId, tenant?.slug);
 
-    // SEO: Notify search engines about bulk deletion
     if (tenant) {
       this.seoService.onProductDeleted(tenant.slug).catch((error) => {
         console.error(
