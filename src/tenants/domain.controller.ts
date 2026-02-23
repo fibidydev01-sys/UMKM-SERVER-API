@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { parse } from 'tldts'; // ✅ Detect apex vs subdomain (support .co.id, .ac.id, dll)
 
 /**
  * 🌐 DOMAIN CONTROLLER (FINAL VERSION)
@@ -20,6 +21,7 @@ import { Prisma } from '@prisma/client';
  *    → Validasi + simpan domain ke DB
  *    → Call Vercel GET /v6/domains/{domain}/config
  *    → Dapat recommendedCNAME + recommendedIPv4 (dinamis, akurat!)
+ *    → Detect apex vs subdomain pakai tldts
  *    → Simpan dnsRecords ke DB sebagai array
  *    → Return DNS instruksi ke user
  *    → User pasang di Cloudflare/GoDaddy/Niagahoster
@@ -37,6 +39,10 @@ import { Prisma } from '@prisma/client';
  *
  * 4. GET /resolve (internal — dipanggil Next.js middleware)
  *    → Lookup custom domain → return tenant slug
+ *
+ * DNS Records Logic:
+ *   Apex domain (tokoku.com, brand.co.id)  → A record @ + CNAME www
+ *   Subdomain   (shop.tokoku.com)           → CNAME shop saja
  */
 
 @Controller('tenants/domain')
@@ -77,6 +83,7 @@ export class DomainController {
   // → Simpan domain ke DB
   // → Ambil DNS records DINAMIS dari Vercel API
   //   (bukan hardcode! Vercel punya records baru yg dinamis)
+  // → Detect apex vs subdomain → DNS records beda!
   // → Return dnsRecords[] ke frontend
   // → User pasang di registrar, bisa refresh kapan saja
   // ==========================================
@@ -112,8 +119,7 @@ export class DomainController {
     // ==========================================
     // AMBIL DNS RECORDS DINAMIS DARI VERCEL
     // GET /v6/domains/{domain}/config
-    // Return: recommendedCNAME + recommendedIPv4
-    // Ini lebih akurat dari hardcode!
+    // + detect apex vs subdomain pakai tldts
     // ==========================================
     const dnsRecords = await this.getRecommendedDnsRecords(customDomain);
 
@@ -151,7 +157,7 @@ export class DomainController {
     return {
       success: true,
       tenant,
-      dnsRecords, // ✅ Array dengan records dinamis dari Vercel
+      dnsRecords, // ✅ Array dengan records dinamis dari Vercel (apex / subdomain aware)
       verified: false,
     };
   }
@@ -321,10 +327,16 @@ export class DomainController {
    * Ambil recommended DNS records dari Vercel
    * GET /v6/domains/{domain}/config
    *
-   * Return recommendedCNAME + recommendedIPv4 yang DINAMIS
-   * Lebih akurat dari hardcode cname.vercel-dns.com / 76.76.21.21
+   * ✅ Pakai tldts untuk detect apex vs subdomain
+   *    Support semua TLD: .com .co.id .ac.id .net .ai dll
    *
-   * Fallback ke nilai lama kalau API gagal — masih valid per Vercel docs
+   * Apex domain  (tokoku.com, brand.co.id)
+   *   → A record @ + CNAME www
+   *
+   * Subdomain    (shop.tokoku.com, toko.brand.co.id)
+   *   → CNAME <label> saja (misal: CNAME shop → cname.vercel-dns.com)
+   *
+   * Fallback ke nilai default kalau Vercel API gagal
    */
   private async getRecommendedDnsRecords(
     domain: string,
@@ -333,8 +345,86 @@ export class DomainController {
   > {
     const vercelToken = process.env.VERCEL_API_TOKEN;
 
-    // Fallback records (masih valid, Vercel janji tetap support)
-    const fallback = [
+    // ✅ Detect apex vs subdomain pakai tldts
+    // Support semua TLD: .co.id, .ac.id, .com.au, .net.id, dll
+    const parsed = parse(domain);
+    const isSubdomain = !!parsed.subdomain;
+    const subdomainLabel = parsed.subdomain ?? null; // "shop" dari "shop.tokoku.com"
+
+    this.logger.log(
+      `[DNS] ${domain} → isSubdomain=${isSubdomain}, label="${subdomainLabel}"`,
+    );
+
+    // ==========================================
+    // SUBDOMAIN → cukup 1 CNAME record saja
+    // shop.tokoku.com   → CNAME shop → cname.vercel-dns.com
+    // toko.brand.co.id  → CNAME toko → cname.vercel-dns.com
+    // ==========================================
+    if (isSubdomain && subdomainLabel) {
+      const fallbackSubdomain = [
+        {
+          type: 'CNAME',
+          name: subdomainLabel,
+          value: 'cname.vercel-dns.com',
+          ttl: 'Auto',
+        },
+      ];
+
+      if (!vercelToken) {
+        this.logger.warn(
+          '[DNS] No VERCEL_API_TOKEN, using fallback subdomain records',
+        );
+        return fallbackSubdomain;
+      }
+
+      try {
+        const res = await fetch(
+          `https://api.vercel.com/v6/domains/${domain}/config`,
+          {
+            headers: { Authorization: `Bearer ${vercelToken}` },
+          },
+        );
+
+        if (!res.ok) {
+          this.logger.warn(
+            `[DNS] Config API returned ${res.status}, using fallback subdomain`,
+          );
+          return fallbackSubdomain;
+        }
+
+        const config = await res.json();
+
+        this.logger.log(
+          `[DNS] Vercel config for ${domain}: ${JSON.stringify(config)}`,
+        );
+
+        const bestCNAME =
+          config.recommendedCNAME?.find(
+            (r: { rank: number }) => r.rank === 1,
+          ) ?? config.recommendedCNAME?.[0];
+
+        return [
+          {
+            type: 'CNAME',
+            name: subdomainLabel,
+            value: bestCNAME?.value ?? 'cname.vercel-dns.com',
+            ttl: 'Auto',
+          },
+        ];
+      } catch (error) {
+        this.logger.error(
+          `[DNS] Failed to get config: ${error.message}, using fallback subdomain`,
+        );
+        return fallbackSubdomain;
+      }
+    }
+
+    // ==========================================
+    // APEX DOMAIN → A record @ + CNAME www
+    // tokoku.com   → A @ + CNAME www
+    // brand.co.id  → A @ + CNAME www  (tldts tahu ini apex, bukan subdomain!)
+    // ==========================================
+    const fallbackApex = [
       { type: 'A', name: '@', value: '76.76.21.21', ttl: 'Auto' },
       {
         type: 'CNAME',
@@ -345,8 +435,10 @@ export class DomainController {
     ];
 
     if (!vercelToken) {
-      this.logger.warn('[DNS] No VERCEL_API_TOKEN, using fallback records');
-      return fallback;
+      this.logger.warn(
+        '[DNS] No VERCEL_API_TOKEN, using fallback apex records',
+      );
+      return fallbackApex;
     }
 
     try {
@@ -359,9 +451,9 @@ export class DomainController {
 
       if (!res.ok) {
         this.logger.warn(
-          `[DNS] Config API returned ${res.status}, using fallback`,
+          `[DNS] Config API returned ${res.status}, using fallback apex`,
         );
-        return fallback;
+        return fallbackApex;
       }
 
       const config = await res.json();
@@ -370,63 +462,35 @@ export class DomainController {
         `[DNS] Vercel config for ${domain}: ${JSON.stringify(config)}`,
       );
 
-      const records: Array<{
-        type: string;
-        name: string;
-        value: string;
-        ttl: string;
-      }> = [];
-
       // Apex domain (@ / root) → pakai A record (rank=1 = preferred)
       const bestIPv4 =
         config.recommendedIPv4?.find((r: { rank: number }) => r.rank === 1) ??
         config.recommendedIPv4?.[0];
-
-      if (bestIPv4?.value?.[0]) {
-        records.push({
-          type: 'A',
-          name: '@',
-          value: bestIPv4.value[0],
-          ttl: 'Auto',
-        });
-      } else {
-        // Fallback A record
-        records.push({
-          type: 'A',
-          name: '@',
-          value: '76.76.21.21',
-          ttl: 'Auto',
-        });
-      }
 
       // www subdomain → pakai CNAME (rank=1 = preferred)
       const bestCNAME =
         config.recommendedCNAME?.find((r: { rank: number }) => r.rank === 1) ??
         config.recommendedCNAME?.[0];
 
-      if (bestCNAME?.value) {
-        records.push({
+      return [
+        {
+          type: 'A',
+          name: '@',
+          value: bestIPv4?.value?.[0] ?? '76.76.21.21',
+          ttl: 'Auto',
+        },
+        {
           type: 'CNAME',
           name: 'www',
-          value: bestCNAME.value,
+          value: bestCNAME?.value ?? 'cname.vercel-dns.com',
           ttl: 'Auto',
-        });
-      } else {
-        // Fallback CNAME
-        records.push({
-          type: 'CNAME',
-          name: 'www',
-          value: 'cname.vercel-dns.com',
-          ttl: 'Auto',
-        });
-      }
-
-      return records;
+        },
+      ];
     } catch (error) {
       this.logger.error(
-        `[DNS] Failed to get config: ${error.message}, using fallback`,
+        `[DNS] Failed to get config: ${error.message}, using fallback apex`,
       );
-      return fallback;
+      return fallbackApex;
     }
   }
 
