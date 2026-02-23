@@ -14,6 +14,19 @@ import * as bcrypt from 'bcrypt';
 // Import validator
 import { validateAndSanitizeLandingConfig } from '../validators/landing-config.validator';
 
+// ✅ FIX 1: DOMAIN SELECT constant
+const DOMAIN_SELECT = {
+  customDomain: true,
+  customDomainVerified: true,
+  customDomainToken: true,
+  sslStatus: true,
+  sslIssuedAt: true,
+  dnsRecords: true,
+  customDomainAddedAt: true,
+  customDomainVerifiedAt: true,
+  customDomainRemovedAt: true,
+} as const;
+
 @Injectable()
 export class TenantsService {
   private readonly logger = new Logger(TenantsService.name);
@@ -85,6 +98,7 @@ export class TenantsService {
             ctaButtonText: true,
             ctaButtonLink: true,
             ctaButtonStyle: true,
+            ...DOMAIN_SELECT,
             status: true,
             createdAt: true,
             _count: {
@@ -429,6 +443,7 @@ export class TenantsService {
         ctaButtonText: true,
         ctaButtonLink: true,
         ctaButtonStyle: true,
+        ...DOMAIN_SELECT,
         status: true,
         updatedAt: true,
       },
