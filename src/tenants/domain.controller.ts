@@ -13,18 +13,30 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 
 /**
- * 🌐 DOMAIN CONTROLLER (CLEAN VERSION)
+ * 🌐 DOMAIN CONTROLLER (FINAL VERSION)
  *
- * Flow yang benar:
- * 1. POST /request  → Simpan domain ke DB + return DNS instruksi static
- *                     User bisa refresh, data tetap ada dari DB!
- * 2. User pasang DNS di Cloudflare/GoDaddy/Niagahoster
- * 3. Tunggu propagasi DNS (10 menit - 48 jam)
- * 4. GET  /status   → User klik "Cek Status"
- *                     → Add ke Vercel (idempotent)
- *                     → Vercel cek apakah DNS sudah propagate
- *                     → Kalau YES → verified + SSL diproses otomatis Vercel
- * 5. DELETE /remove → Hapus dari Vercel + reset DB
+ * Flow:
+ * 1. POST /request
+ *    → Validasi + simpan domain ke DB
+ *    → Call Vercel GET /v6/domains/{domain}/config
+ *    → Dapat recommendedCNAME + recommendedIPv4 (dinamis, akurat!)
+ *    → Simpan dnsRecords ke DB sebagai array
+ *    → Return DNS instruksi ke user
+ *    → User pasang di Cloudflare/GoDaddy/Niagahoster
+ *    → User bisa refresh kapan saja — data tetap ada dari DB!
+ *
+ * 2. GET /status (user klik "Cek Status" — MANUAL)
+ *    → Add domain ke Vercel project (idempotent)
+ *    → Vercel cek apakah DNS sudah propagate
+ *    → Update DB kalau verified/SSL active
+ *    → Return status terkini
+ *
+ * 3. DELETE /remove
+ *    → Hapus dari Vercel project
+ *    → Reset semua domain fields di DB
+ *
+ * 4. GET /resolve (internal — dipanggil Next.js middleware)
+ *    → Lookup custom domain → return tenant slug
  */
 
 @Controller('tenants/domain')
@@ -34,7 +46,7 @@ export class DomainController {
   constructor(private prisma: PrismaService) {}
 
   // ==========================================
-  // 1. RESOLVE (Internal — dipanggil Next.js middleware)
+  // 1. RESOLVE (Internal — Next.js middleware)
   // ==========================================
 
   @Get('resolve')
@@ -61,10 +73,12 @@ export class DomainController {
 
   // ==========================================
   // 2. REQUEST DOMAIN
+  //
   // → Simpan domain ke DB
-  // → Return DNS instruksi static
-  // → BELUM add ke Vercel!
-  // → User bisa refresh, data tetap ada!
+  // → Ambil DNS records DINAMIS dari Vercel API
+  //   (bukan hardcode! Vercel punya records baru yg dinamis)
+  // → Return dnsRecords[] ke frontend
+  // → User pasang di registrar, bisa refresh kapan saja
   // ==========================================
 
   @Post('request')
@@ -95,24 +109,20 @@ export class DomainController {
       throw new HttpException('Domain already taken', HttpStatus.CONFLICT);
     }
 
-    // DNS instruksi static — standard Vercel
-    // Ini instruksi yang user pasang di registrar mereka
-    const dnsRecords = [
-      {
-        type: 'CNAME',
-        name: '@',
-        value: 'cname.vercel-dns.com',
-        ttl: 'Auto',
-      },
-      {
-        type: 'CNAME',
-        name: 'www',
-        value: 'cname.vercel-dns.com',
-        ttl: 'Auto',
-      },
-    ];
+    // ==========================================
+    // AMBIL DNS RECORDS DINAMIS DARI VERCEL
+    // GET /v6/domains/{domain}/config
+    // Return: recommendedCNAME + recommendedIPv4
+    // Ini lebih akurat dari hardcode!
+    // ==========================================
+    const dnsRecords = await this.getRecommendedDnsRecords(customDomain);
 
-    // Simpan ke DB — dnsRecords disimpan agar tampil lagi saat user refresh!
+    this.logger.log(
+      `[Request] DNS records untuk ${customDomain}: ${JSON.stringify(dnsRecords)}`,
+    );
+
+    // Simpan ke DB — dnsRecords sebagai array
+    // Disimpan agar tampil lagi saat user refresh!
     const tenant = await this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
@@ -131,16 +141,17 @@ export class DomainController {
         action: 'requested',
         domain: customDomain,
         status: 'pending',
-        message: 'Domain registered. Waiting for user to set DNS records.',
+        message: 'Domain registered. Waiting for user to configure DNS.',
+        metadata: { dnsRecords } as unknown as Prisma.InputJsonValue,
       },
     });
 
-    this.logger.log(`[Request] Domain saved to DB: ${customDomain}`);
+    this.logger.log(`[Request] Domain saved: ${customDomain}`);
 
     return {
       success: true,
       tenant,
-      dnsRecords, // ✅ Array — langsung render di frontend
+      dnsRecords, // ✅ Array dengan records dinamis dari Vercel
       verified: false,
     };
   }
@@ -149,9 +160,9 @@ export class DomainController {
   // 3. CHECK STATUS (Manual — user klik "Cek Status")
   //
   // Flow:
-  // 1. Add domain ke Vercel (idempotent)
+  // 1. Add domain ke Vercel project (idempotent)
   // 2. Vercel cek apakah DNS sudah propagate
-  // 3. Kalau verified → update DB + SSL diproses Vercel otomatis
+  // 3. Kalau verified → update DB
   // 4. Return status terkini
   // ==========================================
 
@@ -176,7 +187,7 @@ export class DomainController {
 
     const domain = tenant.customDomain;
 
-    // Add ke Vercel + cek status (idempotent)
+    // Add ke Vercel project + cek status (idempotent)
     let vercelVerified = false;
     let sslStatus = 'pending';
 
@@ -185,7 +196,7 @@ export class DomainController {
       vercelVerified = result.verified;
       sslStatus = result.sslStatus;
       this.logger.log(
-        `[Status] Vercel: verified=${vercelVerified}, ssl=${sslStatus}`,
+        `[Status] Vercel result: verified=${vercelVerified}, ssl=${sslStatus}`,
       );
     } catch (error) {
       this.logger.error(`[Status] Vercel error: ${error.message}`);
@@ -226,30 +237,19 @@ export class DomainController {
       });
     }
 
-    // Return status terkini
+    // DNS records dari DB (sudah disimpan saat request)
+    // Fallback ke records default kalau somehow kosong
+    const dnsRecords = Array.isArray(tenant.dnsRecords)
+      ? tenant.dnsRecords
+      : await this.getRecommendedDnsRecords(domain);
+
     return {
       domain,
       verified: vercelVerified || tenant.customDomainVerified,
       configured: vercelVerified,
       sslStatus:
         sslStatus !== 'pending' ? sslStatus : tenant.sslStatus || 'pending',
-      // DNS records dari DB — tetap ada meski user refresh!
-      dnsRecords: Array.isArray(tenant.dnsRecords)
-        ? tenant.dnsRecords
-        : [
-            {
-              type: 'CNAME',
-              name: '@',
-              value: 'cname.vercel-dns.com',
-              ttl: 'Auto',
-            },
-            {
-              type: 'CNAME',
-              name: 'www',
-              value: 'cname.vercel-dns.com',
-              ttl: 'Auto',
-            },
-          ],
+      dnsRecords,
     };
   }
 
@@ -276,7 +276,7 @@ export class DomainController {
 
     const domain = tenant.customDomain;
 
-    // Hapus dari Vercel
+    // Hapus dari Vercel project
     try {
       await this.removeDomainFromVercel(domain);
     } catch (error) {
@@ -318,7 +318,120 @@ export class DomainController {
   // ==========================================
 
   /**
-   * Add domain ke Vercel + cek status
+   * Ambil recommended DNS records dari Vercel
+   * GET /v6/domains/{domain}/config
+   *
+   * Return recommendedCNAME + recommendedIPv4 yang DINAMIS
+   * Lebih akurat dari hardcode cname.vercel-dns.com / 76.76.21.21
+   *
+   * Fallback ke nilai lama kalau API gagal — masih valid per Vercel docs
+   */
+  private async getRecommendedDnsRecords(
+    domain: string,
+  ): Promise<
+    Array<{ type: string; name: string; value: string; ttl: string }>
+  > {
+    const vercelToken = process.env.VERCEL_API_TOKEN;
+
+    // Fallback records (masih valid, Vercel janji tetap support)
+    const fallback = [
+      { type: 'A', name: '@', value: '76.76.21.21', ttl: 'Auto' },
+      {
+        type: 'CNAME',
+        name: 'www',
+        value: 'cname.vercel-dns.com',
+        ttl: 'Auto',
+      },
+    ];
+
+    if (!vercelToken) {
+      this.logger.warn('[DNS] No VERCEL_API_TOKEN, using fallback records');
+      return fallback;
+    }
+
+    try {
+      const res = await fetch(
+        `https://api.vercel.com/v6/domains/${domain}/config`,
+        {
+          headers: { Authorization: `Bearer ${vercelToken}` },
+        },
+      );
+
+      if (!res.ok) {
+        this.logger.warn(
+          `[DNS] Config API returned ${res.status}, using fallback`,
+        );
+        return fallback;
+      }
+
+      const config = await res.json();
+
+      this.logger.log(
+        `[DNS] Vercel config for ${domain}: ${JSON.stringify(config)}`,
+      );
+
+      const records: Array<{
+        type: string;
+        name: string;
+        value: string;
+        ttl: string;
+      }> = [];
+
+      // Apex domain (@ / root) → pakai A record (rank=1 = preferred)
+      const bestIPv4 =
+        config.recommendedIPv4?.find((r: { rank: number }) => r.rank === 1) ??
+        config.recommendedIPv4?.[0];
+
+      if (bestIPv4?.value?.[0]) {
+        records.push({
+          type: 'A',
+          name: '@',
+          value: bestIPv4.value[0],
+          ttl: 'Auto',
+        });
+      } else {
+        // Fallback A record
+        records.push({
+          type: 'A',
+          name: '@',
+          value: '76.76.21.21',
+          ttl: 'Auto',
+        });
+      }
+
+      // www subdomain → pakai CNAME (rank=1 = preferred)
+      const bestCNAME =
+        config.recommendedCNAME?.find((r: { rank: number }) => r.rank === 1) ??
+        config.recommendedCNAME?.[0];
+
+      if (bestCNAME?.value) {
+        records.push({
+          type: 'CNAME',
+          name: 'www',
+          value: bestCNAME.value,
+          ttl: 'Auto',
+        });
+      } else {
+        // Fallback CNAME
+        records.push({
+          type: 'CNAME',
+          name: 'www',
+          value: 'cname.vercel-dns.com',
+          ttl: 'Auto',
+        });
+      }
+
+      return records;
+    } catch (error) {
+      this.logger.error(
+        `[DNS] Failed to get config: ${error.message}, using fallback`,
+      );
+      return fallback;
+    }
+  }
+
+  /**
+   * Add domain ke Vercel project + cek verified status
    * Idempotent — aman dipanggil berkali-kali
    */
   private async addAndCheckVercel(domain: string): Promise<{
@@ -332,7 +445,7 @@ export class DomainController {
       throw new Error('Vercel credentials not configured');
     }
 
-    // Add domain ke Vercel (idempotent)
+    // Add domain ke project (idempotent)
     const addRes = await fetch(
       `https://api.vercel.com/v10/projects/${projectId}/domains`,
       {
@@ -346,9 +459,9 @@ export class DomainController {
     );
 
     const addData = await addRes.json();
-    this.logger.log(`[Vercel] Add: ${JSON.stringify(addData)}`);
+    this.logger.log(`[Vercel] Add domain response: ${JSON.stringify(addData)}`);
 
-    // Cek status domain dari Vercel
+    // Cek status domain dari Vercel project
     const statusRes = await fetch(
       `https://api.vercel.com/v9/projects/${projectId}/domains/${domain}`,
       {
@@ -361,7 +474,7 @@ export class DomainController {
     }
 
     const statusData = await statusRes.json();
-    this.logger.log(`[Vercel] Status: ${JSON.stringify(statusData)}`);
+    this.logger.log(`[Vercel] Domain status: ${JSON.stringify(statusData)}`);
 
     const verified = statusData.verified === true;
     const sslStatus = verified ? 'active' : 'pending';
