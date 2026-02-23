@@ -11,20 +11,20 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
-import * as dns from 'dns/promises';
-import * as crypto from 'crypto';
 
 /**
- * 🌐 DOMAIN CONTROLLER (AUTO-POLLING VERSION)
- * Handles custom domain management for multi-tenant platform
+ * 🌐 DOMAIN CONTROLLER (CLEAN VERSION)
  *
- * Endpoints:
- * - GET  /api/tenants/domain/resolve       → Resolve custom domain to slug (internal)
- * - GET  /api/tenants/domain/check-status  → Check individual DNS record status (NEW!)
- * - POST /api/tenants/domain/request       → Request custom domain
- * - POST /api/tenants/domain/verify        → Verify DNS records (now just adds to Vercel)
- * - GET  /api/tenants/domain/ssl-status    → Check SSL certificate status
- * - DELETE /api/tenants/domain/remove      → Remove custom domain
+ * Flow yang benar:
+ * 1. POST /request  → Simpan domain ke DB + return DNS instruksi static
+ *                     User bisa refresh, data tetap ada dari DB!
+ * 2. User pasang DNS di Cloudflare/GoDaddy/Niagahoster
+ * 3. Tunggu propagasi DNS (10 menit - 48 jam)
+ * 4. GET  /status   → User klik "Cek Status"
+ *                     → Add ke Vercel (idempotent)
+ *                     → Vercel cek apakah DNS sudah propagate
+ *                     → Kalau YES → verified + SSL diproses otomatis Vercel
+ * 5. DELETE /remove → Hapus dari Vercel + reset DB
  */
 
 @Controller('tenants/domain')
@@ -34,103 +34,7 @@ export class DomainController {
   constructor(private prisma: PrismaService) {}
 
   // ==========================================
-  // 🆕 NEW: CHECK DNS STATUS (Auto-Polling Endpoint)
-  // Called by frontend every 10 seconds
-  // ==========================================
-
-  @Get('check-status')
-  async checkDnsStatus(@Query('domain') domain: string) {
-    if (!domain) {
-      throw new HttpException('domain required', HttpStatus.BAD_REQUEST);
-    }
-
-    this.logger.log(`[Check Status] Checking DNS for: ${domain}`);
-
-    try {
-      // Get tenant to retrieve verification token
-      const tenant = await this.prisma.tenant.findFirst({
-        where: { customDomain: domain },
-        select: { customDomainToken: true, id: true },
-      });
-
-      if (!tenant?.customDomainToken) {
-        throw new HttpException('Domain not configured', HttpStatus.NOT_FOUND);
-      }
-
-      // Check all 3 records in parallel
-      const [cnameOk, cnameWwwOk, txtOk] = await Promise.all([
-        this.checkCNAME(domain),
-        this.checkCNAME(`www.${domain}`),
-        this.checkTXT(domain, tenant.customDomainToken),
-      ]);
-
-      const allVerified = cnameOk && cnameWwwOk && txtOk;
-
-      this.logger.log(
-        `[Check Status] ${domain} - CNAME: ${cnameOk}, WWW: ${cnameWwwOk}, TXT: ${txtOk}`,
-      );
-
-      // If all verified but tenant not marked as verified yet, update it
-      if (allVerified && tenant) {
-        const existingTenant = await this.prisma.tenant.findUnique({
-          where: { id: tenant.id },
-          select: { customDomainVerified: true },
-        });
-
-        if (!existingTenant?.customDomainVerified) {
-          this.logger.log(`[Check Status] Auto-verifying domain: ${domain}`);
-
-          // Add to Vercel
-          try {
-            await this.addDomainToVercel(domain);
-          } catch (error) {
-            this.logger.error(`[Check Status] Vercel error: ${error.message}`);
-          }
-
-          // Update tenant
-          await this.prisma.tenant.update({
-            where: { id: tenant.id },
-            data: {
-              customDomainVerified: true,
-              customDomainVerifiedAt: new Date(),
-              sslStatus: 'pending',
-            },
-          });
-
-          // Create log
-          await this.prisma.domainLog.create({
-            data: {
-              tenantId: tenant.id,
-              action: 'verified',
-              domain,
-              status: 'success',
-              message: 'Domain auto-verified via polling',
-            },
-          });
-        }
-      }
-
-      return {
-        cname: cnameOk ? 'verified' : 'pending',
-        cnameWWW: cnameWwwOk ? 'verified' : 'pending',
-        txt: txtOk ? 'verified' : 'pending',
-        allVerified,
-        lastChecked: new Date().toISOString(),
-      };
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-
-      this.logger.error(`[Check Status] Error: ${error.message}`);
-      throw new HttpException(
-        'Failed to check DNS status',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-
-  // ==========================================
-  // 1. RESOLVE CUSTOM DOMAIN (Internal API)
-  // Called by Next.js middleware via internal API
+  // 1. RESOLVE (Internal — dipanggil Next.js middleware)
   // ==========================================
 
   @Get('resolve')
@@ -139,45 +43,28 @@ export class DomainController {
       throw new HttpException('hostname required', HttpStatus.BAD_REQUEST);
     }
 
-    this.logger.log(`[Resolve] Looking up custom domain: ${hostname}`);
+    const tenant = await this.prisma.tenant.findFirst({
+      where: {
+        customDomain: hostname,
+        customDomainVerified: true,
+        status: 'ACTIVE',
+      },
+      select: { slug: true, id: true },
+    });
 
-    try {
-      const tenant = await this.prisma.tenant.findFirst({
-        where: {
-          customDomain: hostname,
-          customDomainVerified: true,
-          status: 'ACTIVE',
-        },
-        select: {
-          slug: true,
-          id: true,
-        },
-      });
-
-      if (!tenant) {
-        this.logger.warn(`[Resolve] Domain not found: ${hostname}`);
-        throw new HttpException('Domain not found', HttpStatus.NOT_FOUND);
-      }
-
-      this.logger.log(`[Resolve] Found tenant: ${tenant.slug}`);
-      return {
-        slug: tenant.slug,
-        tenantId: tenant.id,
-      };
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-
-      this.logger.error(`[Resolve] Error: ${error.message}`);
-      throw new HttpException(
-        'Failed to resolve domain',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+    if (!tenant) {
+      throw new HttpException('Domain not found', HttpStatus.NOT_FOUND);
     }
+
+    return { slug: tenant.slug, tenantId: tenant.id };
   }
 
   // ==========================================
-  // 2. REQUEST CUSTOM DOMAIN
-  // User submits domain → generate token + DNS instructions
+  // 2. REQUEST DOMAIN
+  // → Simpan domain ke DB
+  // → Return DNS instruksi static
+  // → BELUM add ke Vercel!
+  // → User bisa refresh, data tetap ada!
   // ==========================================
 
   @Post('request')
@@ -186,18 +73,16 @@ export class DomainController {
   ) {
     const { tenantId, customDomain } = body;
 
-    this.logger.log(
-      `[Request] Tenant ${tenantId} requesting domain: ${customDomain}`,
-    );
+    this.logger.log(`[Request] ${tenantId} → ${customDomain}`);
 
-    // Validate domain format
+    // Validasi format domain
     const domainRegex =
-      /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$/i;
+      /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i;
     if (!domainRegex.test(customDomain)) {
       throw new HttpException('Invalid domain format', HttpStatus.BAD_REQUEST);
     }
 
-    // Check if domain already taken by another tenant
+    // Cek domain sudah dipakai tenant lain yang sudah verified
     const existing = await this.prisma.tenant.findFirst({
       where: {
         customDomain,
@@ -207,204 +92,169 @@ export class DomainController {
     });
 
     if (existing) {
-      this.logger.warn(`[Request] Domain already taken: ${customDomain}`);
       throw new HttpException('Domain already taken', HttpStatus.CONFLICT);
     }
 
-    // Generate verification token
-    const token = crypto.randomBytes(32).toString('hex');
-
-    // DNS instructions
-    const dnsInstructions = {
-      cname: {
+    // DNS instruksi static — standard Vercel
+    // Ini instruksi yang user pasang di registrar mereka
+    const dnsRecords = [
+      {
         type: 'CNAME',
         name: '@',
         value: 'cname.vercel-dns.com',
         ttl: 'Auto',
-        note: 'Point your root domain to Vercel',
       },
-      cnameWWW: {
+      {
         type: 'CNAME',
         name: 'www',
         value: 'cname.vercel-dns.com',
         ttl: 'Auto',
-        note: 'Point www subdomain to Vercel (optional)',
       },
-      txtVerification: {
-        type: 'TXT',
-        name: '_vercel',
-        value: `vc-domain-verify=${customDomain},${token}`,
-        ttl: 'Auto',
-        note: 'Verification record',
-      },
-    };
+    ];
 
-    // Update tenant
+    // Simpan ke DB — dnsRecords disimpan agar tampil lagi saat user refresh!
     const tenant = await this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
         customDomain,
-        customDomainToken: token,
         customDomainVerified: false,
+        customDomainToken: null,
         customDomainAddedAt: new Date(),
-        sslStatus: 'pending',
-        dnsRecords: dnsInstructions,
+        sslStatus: null,
+        dnsRecords: dnsRecords as unknown as Prisma.InputJsonValue,
       },
     });
 
-    // Create log
     await this.prisma.domainLog.create({
       data: {
         tenantId,
         action: 'requested',
         domain: customDomain,
         status: 'pending',
-        message: 'Custom domain requested',
-        metadata: { dnsInstructions },
+        message: 'Domain registered. Waiting for user to set DNS records.',
       },
     });
 
-    this.logger.log(`[Request] Domain registered: ${customDomain}`);
+    this.logger.log(`[Request] Domain saved to DB: ${customDomain}`);
 
     return {
       success: true,
       tenant,
-      instructions: dnsInstructions,
+      dnsRecords, // ✅ Array — langsung render di frontend
+      verified: false,
     };
   }
 
   // ==========================================
-  // 3. VERIFY DNS RECORDS (Simplified - no longer does DNS checks)
-  // Frontend auto-polling handles DNS checks via /check-status
-  // This endpoint now just manually triggers Vercel addition
+  // 3. CHECK STATUS (Manual — user klik "Cek Status")
+  //
+  // Flow:
+  // 1. Add domain ke Vercel (idempotent)
+  // 2. Vercel cek apakah DNS sudah propagate
+  // 3. Kalau verified → update DB + SSL diproses Vercel otomatis
+  // 4. Return status terkini
   // ==========================================
 
-  @Post('verify')
-  async verifyDomain(@Body() body: { tenantId: string }) {
-    const { tenantId } = body;
-
-    this.logger.log(`[Verify] Manual verify for tenant: ${tenantId}`);
-
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-    });
-
-    if (!tenant?.customDomain || !tenant?.customDomainToken) {
-      throw new HttpException('No custom domain set', HttpStatus.BAD_REQUEST);
-    }
-
-    // Check DNS
-    const hasCNAME = await this.checkCNAME(tenant.customDomain);
-    const hasTXT = await this.checkTXT(
-      tenant.customDomain,
-      tenant.customDomainToken,
-    );
-
-    this.logger.log(`[Verify] DNS checks - CNAME: ${hasCNAME}, TXT: ${hasTXT}`);
-
-    if (!hasCNAME || !hasTXT) {
-      throw new HttpException(
-        {
-          error: 'DNS verification failed',
-          checks: { cname: hasCNAME, txt: hasTXT },
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    // Add to Vercel
-    try {
-      await this.addDomainToVercel(tenant.customDomain);
-    } catch (error) {
-      this.logger.error(`[Verify] Vercel error: ${error.message}`);
-      throw new HttpException(
-        'Failed to add domain to Vercel',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-
-    // Update tenant
-    await this.prisma.tenant.update({
-      where: { id: tenantId },
-      data: {
-        customDomainVerified: true,
-        customDomainVerifiedAt: new Date(),
-        sslStatus: 'pending',
-      },
-    });
-
-    // Create log
-    await this.prisma.domainLog.create({
-      data: {
-        tenantId,
-        action: 'verified',
-        domain: tenant.customDomain,
-        status: 'success',
-        message: 'Domain verified successfully',
-      },
-    });
-
-    this.logger.log(`[Verify] Domain verified: ${tenant.customDomain}`);
-
-    return {
-      success: true,
-      message: 'Domain verified! SSL certificate is being issued.',
-      domain: tenant.customDomain,
-    };
-  }
-
-  // ==========================================
-  // 4. CHECK SSL STATUS
-  // Poll Vercel API for SSL certificate status
-  // ==========================================
-
-  @Get('ssl-status')
-  async sslStatus(@Query('tenantId') tenantId: string) {
+  @Get('status')
+  async checkStatus(@Query('tenantId') tenantId: string) {
     if (!tenantId) {
       throw new HttpException('tenantId required', HttpStatus.BAD_REQUEST);
     }
 
-    this.logger.log(`[SSL] Checking SSL for tenant: ${tenantId}`);
+    this.logger.log(`[Status] Manual check for tenant: ${tenantId}`);
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
     });
 
-    if (!tenant?.customDomain || !tenant.customDomainVerified) {
-      return {
-        sslStatus: 'not_configured',
-        message: 'Custom domain not configured or not verified',
-      };
+    if (!tenant?.customDomain) {
+      throw new HttpException(
+        'No custom domain configured',
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
-    // Check Vercel SSL
-    const sslStatus = await this.checkVercelSSL(tenant.customDomain);
+    const domain = tenant.customDomain;
 
-    this.logger.log(`[SSL] Status for ${tenant.customDomain}: ${sslStatus}`);
+    // Add ke Vercel + cek status (idempotent)
+    let vercelVerified = false;
+    let sslStatus = 'pending';
 
-    // Update if active
-    if (sslStatus === 'active' && tenant.sslStatus !== 'active') {
-      await this.prisma.tenant.update({
-        where: { id: tenantId },
+    try {
+      const result = await this.addAndCheckVercel(domain);
+      vercelVerified = result.verified;
+      sslStatus = result.sslStatus;
+      this.logger.log(
+        `[Status] Vercel: verified=${vercelVerified}, ssl=${sslStatus}`,
+      );
+    } catch (error) {
+      this.logger.error(`[Status] Vercel error: ${error.message}`);
+      // Jangan throw — tetap return status dari DB
+    }
+
+    // Update DB kalau ada perubahan
+    const updates: Prisma.TenantUpdateInput = {};
+
+    if (vercelVerified && !tenant.customDomainVerified) {
+      updates.customDomainVerified = true;
+      updates.customDomainVerifiedAt = new Date();
+      updates.sslStatus = sslStatus;
+
+      await this.prisma.domainLog.create({
         data: {
-          sslStatus: 'active',
-          sslIssuedAt: new Date(),
+          tenantId,
+          action: 'verified',
+          domain,
+          status: 'success',
+          message: 'Domain verified by Vercel',
         },
       });
 
-      this.logger.log(`[SSL] SSL activated for ${tenant.customDomain}`);
+      this.logger.log(`[Status] ✅ Domain verified: ${domain}`);
     }
 
+    if (sslStatus === 'active' && tenant.sslStatus !== 'active') {
+      updates.sslStatus = 'active';
+      updates.sslIssuedAt = new Date();
+      this.logger.log(`[Status] ✅ SSL active: ${domain}`);
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await this.prisma.tenant.update({
+        where: { id: tenantId },
+        data: updates,
+      });
+    }
+
+    // Return status terkini
     return {
-      sslStatus,
-      domain: tenant.customDomain,
-      issuedAt: tenant.sslIssuedAt,
+      domain,
+      verified: vercelVerified || tenant.customDomainVerified,
+      configured: vercelVerified,
+      sslStatus:
+        sslStatus !== 'pending' ? sslStatus : tenant.sslStatus || 'pending',
+      // DNS records dari DB — tetap ada meski user refresh!
+      dnsRecords: Array.isArray(tenant.dnsRecords)
+        ? tenant.dnsRecords
+        : [
+            {
+              type: 'CNAME',
+              name: '@',
+              value: 'cname.vercel-dns.com',
+              ttl: 'Auto',
+            },
+            {
+              type: 'CNAME',
+              name: 'www',
+              value: 'cname.vercel-dns.com',
+              ttl: 'Auto',
+            },
+          ],
     };
   }
 
   // ==========================================
-  // 5. REMOVE CUSTOM DOMAIN
-  // Remove from Vercel + reset DB fields
+  // 4. REMOVE DOMAIN
   // ==========================================
 
   @Delete('remove')
@@ -426,14 +276,15 @@ export class DomainController {
 
     const domain = tenant.customDomain;
 
-    // Remove from Vercel
+    // Hapus dari Vercel
     try {
       await this.removeDomainFromVercel(domain);
     } catch (error) {
       this.logger.warn(`[Remove] Vercel removal failed: ${error.message}`);
+      // Tetap lanjut reset DB
     }
 
-    // Update tenant
+    // Reset semua domain fields
     await this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
@@ -443,10 +294,12 @@ export class DomainController {
         sslStatus: null,
         sslIssuedAt: null,
         dnsRecords: Prisma.DbNull,
+        customDomainAddedAt: null,
+        customDomainVerifiedAt: null,
+        customDomainRemovedAt: new Date(),
       },
     });
 
-    // Create log
     await this.prisma.domainLog.create({
       data: {
         tenantId,
@@ -457,57 +310,30 @@ export class DomainController {
       },
     });
 
-    this.logger.log(`[Remove] Domain removed: ${domain}`);
-
-    return {
-      success: true,
-      message: 'Custom domain removed successfully',
-    };
+    return { success: true, message: 'Custom domain removed successfully' };
   }
 
   // ==========================================
-  // HELPER METHODS
+  // VERCEL HELPERS
   // ==========================================
 
-  private async checkCNAME(domain: string): Promise<boolean> {
-    try {
-      const records = await dns.resolveCname(domain);
-      const hasVercelCname = records.some(
-        (r) =>
-          r.includes('vercel-dns.com') || r.includes('cname.vercel-dns.com'),
-      );
-      return hasVercelCname;
-    } catch {
-      // If CNAME fails, check A record (CNAME flattening)
-      try {
-        const aRecords = await dns.resolve4(domain);
-        return aRecords.length > 0;
-      } catch {
-        return false;
-      }
-    }
-  }
-
-  private async checkTXT(domain: string, token: string): Promise<boolean> {
-    try {
-      const records = await dns.resolveTxt(`_vercel.${domain}`);
-      const flat = records.flat();
-      const expected = `vc-domain-verify=${domain},${token}`;
-      return flat.some((r) => r === expected);
-    } catch {
-      return false;
-    }
-  }
-
-  private async addDomainToVercel(domain: string): Promise<void> {
+  /**
+   * Add domain ke Vercel + cek status
+   * Idempotent — aman dipanggil berkali-kali
+   */
+  private async addAndCheckVercel(domain: string): Promise<{
+    verified: boolean;
+    sslStatus: string;
+  }> {
     const vercelToken = process.env.VERCEL_API_TOKEN;
     const projectId = process.env.VERCEL_PROJECT_ID;
 
     if (!vercelToken || !projectId) {
-      throw new Error('Vercel credentials not configured in .env');
+      throw new Error('Vercel credentials not configured');
     }
 
-    const res = await fetch(
+    // Add domain ke Vercel (idempotent)
+    const addRes = await fetch(
       `https://api.vercel.com/v10/projects/${projectId}/domains`,
       {
         method: 'POST',
@@ -519,53 +345,45 @@ export class DomainController {
       },
     );
 
-    if (!res.ok) {
-      const error = await res.json();
-      throw new Error(error.error?.message || 'Failed to add domain to Vercel');
+    const addData = await addRes.json();
+    this.logger.log(`[Vercel] Add: ${JSON.stringify(addData)}`);
+
+    // Cek status domain dari Vercel
+    const statusRes = await fetch(
+      `https://api.vercel.com/v9/projects/${projectId}/domains/${domain}`,
+      {
+        headers: { Authorization: `Bearer ${vercelToken}` },
+      },
+    );
+
+    if (!statusRes.ok) {
+      return { verified: false, sslStatus: 'pending' };
     }
+
+    const statusData = await statusRes.json();
+    this.logger.log(`[Vercel] Status: ${JSON.stringify(statusData)}`);
+
+    const verified = statusData.verified === true;
+    const sslStatus = verified ? 'active' : 'pending';
+
+    return { verified, sslStatus };
   }
 
-  private async checkVercelSSL(domain: string): Promise<string> {
-    const vercelToken = process.env.VERCEL_API_TOKEN;
-    const projectId = process.env.VERCEL_PROJECT_ID;
-
-    if (!vercelToken || !projectId) return 'unknown';
-
-    try {
-      const res = await fetch(
-        `https://api.vercel.com/v9/projects/${projectId}/domains/${domain}`,
-        {
-          headers: { Authorization: `Bearer ${vercelToken}` },
-        },
-      );
-
-      if (!res.ok) return 'unknown';
-
-      const data = await res.json();
-      return data.verified ? 'active' : 'pending';
-    } catch {
-      return 'unknown';
-    }
-  }
-
+  /**
+   * Hapus domain dari Vercel project
+   */
   private async removeDomainFromVercel(domain: string): Promise<void> {
     const vercelToken = process.env.VERCEL_API_TOKEN;
     const projectId = process.env.VERCEL_PROJECT_ID;
 
-    if (!vercelToken || !projectId) {
-      throw new Error('Vercel credentials not configured in .env');
-    }
+    if (!vercelToken || !projectId) return;
 
-    const res = await fetch(
+    await fetch(
       `https://api.vercel.com/v9/projects/${projectId}/domains/${domain}`,
       {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${vercelToken}` },
       },
     );
-
-    if (!res.ok) {
-      throw new Error('Failed to remove domain from Vercel');
-    }
   }
 }
