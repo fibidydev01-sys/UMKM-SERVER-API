@@ -10,6 +10,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { Prisma } from '@prisma/client';
 import { parse } from 'tldts'; // ✅ Detect apex vs subdomain (support .co.id, .ac.id, dll)
 
@@ -49,7 +50,10 @@ import { parse } from 'tldts'; // ✅ Detect apex vs subdomain (support .co.id, 
 export class DomainController {
   private readonly logger = new Logger(DomainController.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private redis: RedisService, // ✅ FIX: Inject RedisService untuk cache invalidation
+  ) {}
 
   // ==========================================
   // 1. RESOLVE (Internal — Next.js middleware)
@@ -140,6 +144,9 @@ export class DomainController {
         dnsRecords: dnsRecords as unknown as Prisma.InputJsonValue,
       },
     });
+
+    // ✅ FIX: Invalidate Redis cache setelah update domain
+    await this.redis.invalidateTenant(tenantId, tenant.slug);
 
     await this.prisma.domainLog.create({
       data: {
@@ -241,6 +248,9 @@ export class DomainController {
         where: { id: tenantId },
         data: updates,
       });
+
+      // ✅ FIX: Invalidate Redis cache setelah update status domain
+      await this.redis.invalidateTenant(tenantId, tenant.slug);
     }
 
     // DNS records dari DB (sudah disimpan saat request)
@@ -281,6 +291,7 @@ export class DomainController {
     }
 
     const domain = tenant.customDomain;
+    const tenantSlug = tenant.slug;
 
     // Hapus dari Vercel project
     try {
@@ -305,6 +316,9 @@ export class DomainController {
         customDomainRemovedAt: new Date(),
       },
     });
+
+    // ✅ FIX: Invalidate Redis cache setelah remove domain
+    await this.redis.invalidateTenant(tenantId, tenantSlug);
 
     await this.prisma.domainLog.create({
       data: {
